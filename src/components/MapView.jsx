@@ -356,13 +356,14 @@ function SoilProfile({ raw }) {
   )
 }
 
-// Fit map to elevation path when no tower segment is selected (only when we should show elevation view)
+// Fit map to elevation path once on load; do not refit when user clicks chainage (trees) to avoid resize
 function FitElevationBounds({ positions, shouldFit }) {
   const map = useMap()
   const hasFitted = useRef(false)
   useEffect(() => {
     if (!positions || positions.length < 2) return
     if (shouldFit) {
+      if (hasFitted.current) return
       try {
         const bounds = L.latLngBounds(positions)
         if (bounds.isValid()) {
