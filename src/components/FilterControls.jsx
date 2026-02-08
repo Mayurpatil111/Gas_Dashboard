@@ -6,13 +6,15 @@ function FilterControls({ onFilterChange }) {
     towerNo: 'All',
     selectedTowers: [], // Array of tower indices
     heightRange: 'All',
-    chainage: 'All'
+    chainage: 'All',
+    treeHeight: 'All'
   })
 
   const [isExpanded, setIsExpanded] = useState(true)
   const [towerNames, setTowerNames] = useState([]) // legacy; no longer loaded from Details file
   const [heightRanges, setHeightRanges] = useState([])
   const [chainages, setChainages] = useState([])
+  const [treeHeights, setTreeHeights] = useState([])
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef(null)
 
@@ -62,6 +64,29 @@ function FilterControls({ onFilterChange }) {
       }
     }
     loadChainages()
+  }, [])
+
+  // Load unique tree heights from Trees_odisha.json
+  useEffect(() => {
+    const loadTreeHeights = async () => {
+      try {
+        const response = await fetch('/Trees_odisha.json')
+        if (!response.ok) return
+        const ct = response.headers.get('content-type') || ''
+        if (!ct.includes('application/json')) return
+        const jsonData = await response.json()
+        const rows = jsonData?.sheets?.Sheet1 || []
+        const uniqueHeights = [...new Set(
+          rows
+            .map(row => row.height)
+            .filter(h => h !== '' && h !== null && h !== undefined)
+        )].sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0))
+        setTreeHeights(uniqueHeights)
+      } catch (error) {
+        console.error('Error loading tree heights:', error)
+      }
+    }
+    loadTreeHeights()
   }, [])
 
   // Close dropdown when clicking outside
@@ -258,6 +283,27 @@ function FilterControls({ onFilterChange }) {
               >
                 <option value="All">All Chainages</option>
                 {chainages.map((value, index) => (
+                  <option key={index} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Tree Height Dropdown (from Trees_odisha.json) */}
+            <div className="group md:col-span-1">
+              <label className="flex items-center gap-2 text-gray-300 text-sm font-medium mb-2">
+                <Ruler className="w-4 h-4 text-yellow-400" />
+                Tree Height
+              </label>
+              <select
+                value={filters.treeHeight}
+                onChange={(e) => handleChange('treeHeight', e.target.value)}
+                className="w-full px-4 py-2.5 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200 hover:bg-black appearance-none"
+                style={{ backgroundColor: 'black', color: 'white', borderColor: 'white', borderRadius: '8px', fontSize: '14px', fontWeight: '700', fontFamily: 'inherit', cursor: 'pointer' }}
+              >
+                <option value="All">All Heights</option>
+                {treeHeights.map((value, index) => (
                   <option key={index} value={value}>
                     {value}
                   </option>

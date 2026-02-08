@@ -1001,10 +1001,15 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
           </Marker>
         ))}
 
-        {/* Tree markers from elevation data for selected chainage point only */}
+        {/* Tree markers from elevation data for selected chainage point only (filtered by tree height dropdown) */}
         {selectedElevationPoint &&
           Array.isArray(selectedElevationPoint.trees) &&
-          selectedElevationPoint.trees.map((t, index) => {
+          selectedElevationPoint.trees
+            .filter((t) => {
+              if (!filters?.treeHeight || filters.treeHeight === 'All') return true
+              return String(t.height) === String(filters.treeHeight)
+            })
+            .map((t, index) => {
             const tLat = parseFloat(t.latitude)
             const tLng = parseFloat(t.longitude)
             if (isNaN(tLat) || isNaN(tLng)) return null
