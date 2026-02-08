@@ -47,6 +47,7 @@ function App() {
             projectData={null}
             selectedTowerIndices={selectedTowerIndices}
             selectedSoilPoint={selectedSoilPoint}
+            selectedChainage={filters.chainage}
           />
         </div>
       </div>

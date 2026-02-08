@@ -132,9 +132,26 @@ function parseLatLng(str) {
   return [lat, lng]
 }
 
+// Parse decimal degree location like "20.217248°N 84.734508°E" into [lat, lng]
+function parseDecimalDegreeLocation(str) {
+  if (!str || typeof str !== 'string') return null
+  const match = str.trim().match(/([+-]?\d+\.?\d*)\s*°?\s*([NS])\s+([+-]?\d+\.?\d*)\s*°?\s*([EW])/i)
+  if (!match) return null
+  let lat = parseFloat(match[1])
+  const latHemi = (match[2] || '').toUpperCase()
+  let lng = parseFloat(match[3])
+  const lngHemi = (match[4] || '').toUpperCase()
+  if (isNaN(lat) || isNaN(lng)) return null
+  if (latHemi === 'S') lat = -lat
+  if (lngHemi === 'W') lng = -lng
+  return [lat, lng]
+}
+
 // Parse a DMS location string like `20°13'02"N 84°44'03"E` into [lat, lng]
 function parseDMSLocation(str) {
   if (!str || typeof str !== 'string') return null
+  const decimal = parseDecimalDegreeLocation(str)
+  if (decimal) return decimal
   // Split into two parts: lat and lon
   const parts = str.trim().split(/\s+/)
   if (parts.length < 2) return null
@@ -164,12 +181,20 @@ function parseDMSLocation(str) {
 function SoilProfile({ raw }) {
   const depths = ['1 m', '2 m', '3 m', '4 m']
   const xLabels = ['Clay', 'Gravel', 'Sand', 'Silt']
-  const layers = [
-    { clay: 'col_5', gravel: 'col_6', sand: 'col_7', silt: 'col_8', moisture: 'col_9' },
-    { clay: 'col_22', gravel: 'col_23', sand: 'col_24', silt: 'col_25', moisture: 'col_26' },
-    { clay: 'col_39', gravel: 'col_40', sand: 'col_41', silt: 'col_42', moisture: 'col_43' },
-    { clay: 'col_56', gravel: 'col_57', sand: 'col_58', silt: 'col_59', moisture: 'col_60' },
-  ]
+  const isNewFormat = raw && (raw.clay != null || raw.at_1_m_depth_dry_density_g_cc != null)
+  const layers = isNewFormat
+    ? [
+        { clay: 'clay', gravel: 'gravel', sand: 'sand', silt: 'silt' },
+        { clay: 'clay_1', gravel: 'gravel_1', sand: 'sand_1', silt: 'silt_1' },
+        { clay: 'clay_2', gravel: 'gravel_2', sand: 'sand_2', silt: 'silt_2' },
+        { clay: 'clay_3', gravel: 'gravel_3', sand: 'sand_3', silt: 'silt_3' },
+      ]
+    : [
+        { clay: 'col_5', gravel: 'col_6', sand: 'col_7', silt: 'col_8', moisture: 'col_9' },
+        { clay: 'col_22', gravel: 'col_23', sand: 'col_24', silt: 'col_25', moisture: 'col_26' },
+        { clay: 'col_39', gravel: 'col_40', sand: 'col_41', silt: 'col_42', moisture: 'col_43' },
+        { clay: 'col_56', gravel: 'col_57', sand: 'col_58', silt: 'col_59', moisture: 'col_60' },
+      ]
 
   const seriesDefs = [
     { key: 'clay', label: 'Clay', color: '#8b5cf6' },
@@ -501,8 +526,10 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
         const json = await res.json()
         const rows = json?.sheets?.Sheet3 || []
 
-        // First row is header/field descriptions; actual data starts from index 1
-        const dataRows = rows.slice(1)
+        // Updated Soil Data has no header row; legacy had header at index 0
+        const firstLoc = rows[0]?.locations
+        const looksLikeHeader = firstLoc && typeof firstLoc === 'string' && !firstLoc.match(/\d+\.\d+°?[NS]/i)
+        const dataRows = looksLikeHeader ? rows.slice(1) : rows
 
         const points = dataRows
           .map((row) => {
