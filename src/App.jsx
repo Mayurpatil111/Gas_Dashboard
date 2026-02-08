@@ -33,7 +33,7 @@ function App() {
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Map */}
-        <div className="w-[75%] relative bg-gray-900/50 p-[1rem] rounded-lg">
+        <div className="w-[73%] relative bg-gray-900/50 p-[1rem] rounded-lg">
           <MapView
             filters={filters}
             selectedTowerIndices={selectedTowerIndices}
@@ -42,7 +42,7 @@ function App() {
           />
         </div>
         {/* Right Panel - Data */}
-        <div className="w-[25%] border-l border-gray-700/50 shadow-2xl">
+        <div className="w-[27%] border-l border-gray-700/50 shadow-2xl">
           <DataPanels
             projectData={null}
             selectedTowerIndices={selectedTowerIndices}
