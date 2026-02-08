@@ -121,6 +121,30 @@ function FitMultipleSegments({ segments }) {
   return null
 }
 
+// Get chainage value from a DATA_Gas_Pipeline row (key like chainage_228579000000001)
+function getChainageFromGasRow(row) {
+  if (!row || typeof row !== 'object') return null
+  const key = Object.keys(row).find((k) => k.toLowerCase().startsWith('chainage_'))
+  return key ? row[key] : null
+}
+
+// Get start/end [lat, lng] from a DATA_Gas_Pipeline row
+function getStartEndFromGasRow(row) {
+  if (!row || typeof row !== 'object') return null
+  const getVal = (prefix) => {
+    const key = Object.keys(row).find((k) => k.toLowerCase().startsWith(prefix))
+    const v = key ? row[key] : null
+    const n = v != null ? parseFloat(v) : NaN
+    return Number.isNaN(n) ? null : n
+  }
+  const startLat = getVal('start_latitude')
+  const startLng = getVal('start_longitude')
+  const endLat = getVal('end_latitude')
+  const endLng = getVal('end_longitude')
+  if (startLat == null || startLng == null || endLat == null || endLng == null) return null
+  return { start: [startLat, startLng], end: [endLat, endLng] }
+}
+
 // Parse "lat,lng" string to [lat, lng] or null
 function parseLatLng(str) {
   if (!str || typeof str !== 'string') return null
@@ -476,6 +500,56 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
   const selectedSoil = selectedSoilPoint !== undefined ? selectedSoilPoint : localSoilPoint
   const setSelectedSoil = setSelectedSoilPoint || setLocalSoilPoint
   const fileInputRef = useRef(null)
+  const [gasPipelineRows, setGasPipelineRows] = useState([])
+  const [chainageSegment, setChainageSegment] = useState(null) // { start: [lat,lng], end: [lat,lng] } when a chainage is selected
+
+  // Load DATA_Gas_Pipeline.json for chainage segment (start→end line)
+  useEffect(() => {
+    const loadGasPipeline = async () => {
+      try {
+        const res = await fetch('/DATA_Gas_Pipeline.json')
+        if (!res.ok) return
+        const ct = res.headers.get('content-type') || ''
+        if (!ct.includes('application/json')) return
+        const json = await res.json()
+        setGasPipelineRows(json?.sheets?.Sheet1 || [])
+      } catch (error) {
+        console.error('Error loading DATA_Gas_Pipeline.json:', error)
+      }
+    }
+    loadGasPipeline()
+  }, [])
+
+  // When chainage is selected, find matching row and set segment for start→end line
+  useEffect(() => {
+    if (!filters?.chainage || filters.chainage === 'All' || gasPipelineRows.length === 0) {
+      setChainageSegment(null)
+      return
+    }
+    const chainageNum = parseFloat(filters.chainage)
+    let match = gasPipelineRows.find((row) => {
+      const rowChainage = getChainageFromGasRow(row)
+      if (rowChainage == null) return false
+      const rowNum = parseFloat(rowChainage)
+      if (Number.isNaN(chainageNum) || Number.isNaN(rowNum)) return false
+      return Math.abs(chainageNum - rowNum) < 0.001
+    })
+    if (!match && !Number.isNaN(chainageNum)) {
+      const withNum = gasPipelineRows
+        .map((row) => ({ row, chainage: getChainageFromGasRow(row) }))
+        .filter((x) => x.chainage != null)
+        .map((x) => ({ ...x, num: parseFloat(x.chainage) }))
+        .filter((x) => !Number.isNaN(x.num))
+      if (withNum.length > 0) {
+        const closest = withNum.reduce((best, cur) =>
+          Math.abs(cur.num - chainageNum) < Math.abs(best.num - chainageNum) ? cur : best
+        )
+        match = closest.row
+      }
+    }
+    const segment = match ? getStartEndFromGasRow(match) : null
+    setChainageSegment(segment)
+  }, [filters?.chainage, gasPipelineRows])
 
   // Load Elevation_data_100m_distance.json and build [lat, lng] positions + point info
   useEffect(() => {
@@ -817,6 +891,34 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
                 zoom={selectedTowerIndices.length === 1 ? 15 : 12} 
               />
             )}
+          </>
+        )}
+
+        {/* Chainage segment: start→end line + markers when a chainage is selected (from DATA_Gas_Pipeline.json) */}
+        {chainageSegment && (
+          <>
+            <Polyline
+              positions={[chainageSegment.start, chainageSegment.end]}
+              pathOptions={{ color: '#f59e0b', weight: 5, opacity: 0.95 }}
+            />
+            <Marker
+              position={chainageSegment.end}
+              icon={L.divIcon({
+                className: 'chainage-segment-marker',
+                html: `<div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:linear-gradient(145deg,#ef4444,#dc2626);border:2px solid rgba(255,255,255,0.95);border-radius:50%;box-shadow:0 3px 8px rgba(0,0,0,0.35);font-weight:700;color:#fff;font-size:12px;">E</div>`,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+              })}
+            >
+              <Popup>
+                <div className="p-2 min-w-[160px]">
+                  <h3 className="font-bold text-sm text-gray-800">End</h3>
+                  <p className="text-xs text-gray-600">Lat: {chainageSegment.end[0].toFixed(6)}</p>
+                  <p className="text-xs text-gray-600">Lon: {chainageSegment.end[1].toFixed(6)}</p>
+                </div>
+              </Popup>
+            </Marker>
+            <FitStartEndBounds startLatLng={chainageSegment.start} endLatLng={chainageSegment.end} />
           </>
         )}
 

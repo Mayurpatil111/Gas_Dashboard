@@ -549,30 +549,32 @@ function DataPanels({ projectData, selectedTowerIndices, selectedSoilPoint, sele
         <DataPanel label="Existing linear infrastructure in isolated stretches" value={displayValue(detailData.existing_linear_infrastructure)} color="orange" />
         <DataPanel label="State" value={displayValue(detailData.state)} />
       </div>
-
-      {/* TOPOGRAPHY */}
-      <DataPanel label="TOPOGRAPHY" header={true} icon={<Layers className="w-3.5 h-3.5 text-emerald-400" />} />
-      <div className="grid grid-cols-4 gap-1" >
-        <DataPanel label="Terrain" value={displayValue(detailData.terrain)} color="green" />
+      <div className="grid grid-cols-3 gap-1">
         <DataPanel label="Tahasil" value={displayValue(detailData.tahasil)} color="green" />
         <DataPanel label="Village" value={displayValue(detailData.village)} color="green" />
         <DataPanel label="Ground Temperature" value={displayValue(detailData.ground_temperature)} color="green" />
       </div>
 
+      {/* TOPOGRAPHY */}
+      <DataPanel label="TOPOGRAPHY" header={true} icon={<Layers className="w-3.5 h-3.5 text-emerald-400" />} />
+      <div className="grid grid-cols-1 gap-1" >
+        <DataPanel label="Terrain" value={displayValue(detailData.terrain)} color="green" />
+      </div>
+
       {/* NATURAL CONSTRAINTS */}
       <DataPanel label="NATURAL CONSTRAINTS" header={true} icon={<Layers className="w-3.5 h-3.5 text-cyan-400" />} />
-      <div className="grid grid-cols-3 gap-1">
+      <div className="grid grid-cols-4 gap-1">
         <DataPanel label="Major River Crossing" value={displayValue(detailData.major_river_crossing)} color="blue" />
         <DataPanel label="Nallahs and Minor Drainage Channels" value={displayValue(detailData.nallahs_minor_drainage)} color="blue" />
+        <DataPanel label="Trees Between Route" value={displayValue(detailData.trees_between_route)} color="blue" />
         <DataPanel label="Low-lying Agricultural Areas Seasonal Waterlogging" value={displayValue(detailData.low_lying_agricultural_waterlogging)} color="blue" />
       </div>
 
       {/* SAFETY & REGULATORY SCREENING */}
       <DataPanel label="SAFETY & REGULATORY SCREENING" header={true} icon={<Layers className="w-3.5 h-3.5 text-red-400" />} />
-      <div className="grid grid-cols-5 gap-1">
+      <div className="grid grid-cols-4 gap-1">
         <DataPanel label="Ground Elevation" value={displayValue(detailData.elevation_m)} color="red" />
         <DataPanel label="Ground Temperature" value={displayValue(detailData.ground_temperature)} color="red" />
-        <DataPanel label="Trees Between Route" value={displayValue(detailData.trees_between_route)} color="red" />
         <DataPanel label="Population density" value={displayValue(detailData.population_density)} color="red" />
         <DataPanel label="Safety Exclusion Zones" value={displayValue(detailData.safety_exclusion_zones)} color="red" />
       </div>
