@@ -270,7 +270,7 @@ function FilterControls({ onFilterChange }) {
             </div> */}
 
             {/* Chainage Dropdown (from Elevation_data_100m_distance.json) */}
-            <div className="group md:col-span-1">
+            {/* <div className="group md:col-span-1">
               <label className="flex items-center gap-2 text-gray-300 text-sm font-medium mb-2">
                 <Ruler className="w-4 h-4 text-green-400" />
                 Chainage
@@ -288,10 +288,10 @@ function FilterControls({ onFilterChange }) {
                   </option>
                 ))}
               </select>
-            </div>
+            </div> */}
 
             {/* Tree Height Dropdown (from Trees_odisha.json) */}
-            <div className="group md:col-span-1">
+            {/* <div className="group md:col-span-1">
               <label className="flex items-center gap-2 text-gray-300 text-sm font-medium mb-2">
                 <Ruler className="w-4 h-4 text-yellow-400" />
                 Tree Height
@@ -309,7 +309,7 @@ function FilterControls({ onFilterChange }) {
                   </option>
                 ))}
               </select>
-            </div>
+            </div> */}
           </div>
         )}
       </div>
