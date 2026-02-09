@@ -108,7 +108,12 @@ function DataPanel({ label, value, header = false, icon, color = 'blue' }) {
       <div className="bg-black  border-l-4 border-blue-500 rounded-lg p-2 mb-2 ">
         <div className="flex items-center gap-1.5 ">
           {icon || <Layers className="w-3.5 h-3.5 text-blue-400" />}
-          <div className="text-white font-bold text-sm uppercase tracking-wide">{label}</div>
+          {/* Show header text with Times New Roman and normal casing */}
+          <div
+            className="text-white font-bold text-lg tracking-wide font-medium"
+          >
+            {label}
+          </div>
         </div>
       </div>
     )
@@ -349,7 +354,16 @@ function gasRowToDetailData(row) {
     safety_exclusion_zones: '',
     risk_category: '',
     risk_level: '',
-    flood_prone_zone: row.flood_prone_zone_area_acres_0 != null ? `${row.flood_prone_zone_area_acres_0} acres` : '',
+    flood_prone_zone: (() => {
+      const val = getRowVal(row, 'flood_prone_zone_area_acres_0', 'flood_prone_zone', 'flood_prone_zone_km')
+      if (!val || val === '') return ''
+      // If it's a number, add "acres", otherwise return as is
+      const numVal = parseFloat(val)
+      if (!isNaN(numVal) && numVal > 0) {
+        return `${val} acres`
+      }
+      return val
+    })(),
     river_name: '',
     length_km: '',
     plain_terrain_km: '',
@@ -536,55 +550,64 @@ function DataPanels({ projectData, selectedTowerIndices, selectedSoilPoint, sele
      
 
       {/* ROUTE FEASIBILITY ASSESSMENT */}
-      <DataPanel label="ROUTE FEASIBILITY ASSESSMENT" header={true} icon={<Layers className="w-3.5 h-3.5 text-amber-400" />} />
+      <DataPanel label="Route Feasibility Assessment" header={true} icon={<Layers className="w-3.5 h-3.5 text-amber-400" />} />
       <div className="grid grid-cols-4 gap-1">
-        <DataPanel label="Land Use" value={displayValue(detailData.land_use)} color="orange" />
-        <DataPanel label="Land Ownership & ROU" value={displayValue(detailData.land_ownership_rou)} color="orange" />
-        <DataPanel label="Route Alignment" value={detailData.route_alignment_km != null && detailData.route_alignment_km !== '' ? `${(parseFloat(detailData.route_alignment_km) || 0).toFixed(2)} km` : 'Absence'} color="orange" />
-        <DataPanel label="Road Crossing" value={displayValue(detailData.road_crossings)} color="orange" />
+      <DataPanel label="State" value={displayValue(detailData.state)} color="green" />
+      <DataPanel label="District" value={displayValue(detailData.district)} color="green" />
+      <DataPanel label="Tahsil" value={displayValue(detailData.tahasil)} color="green" />
+      <DataPanel label="Village" value={displayValue(detailData.village)} color="green" />
+        
       </div>
       <div className="grid grid-cols-4 gap-1">
-        <DataPanel label="Railway Crossing" value={displayValue(railwayValue)} color="orange" />
-        <DataPanel label="High-voltage Transmission Corridors" value={displayValue(detailData.high_voltage_transmission_corridors)} color="orange" />
-        <DataPanel label="Existing linear infrastructure in isolated stretches" value={displayValue(detailData.existing_linear_infrastructure)} color="orange" />
-        <DataPanel label="State" value={displayValue(detailData.state)} />
+      {/* <DataPanel label="Route Alignment" value={detailData.route_alignment_km != null && detailData.route_alignment_km !== '' ? `${(parseFloat(detailData.route_alignment_km) || 0).toFixed(2)} km` : 'Absence'} color="orange" /> */}
+      <DataPanel label="Total Plot No." value={displayValue(detailData.total_plot_no)} color="orange" />
+      <DataPanel label="Land Use" value={displayValue(detailData.land_use)} color="orange" />
+      <DataPanel label="Land Ownership & ROU" value={displayValue(detailData.land_ownership_rou)} color="orange" />
+      <DataPanel label="Road Crossing" value={displayValue(detailData.road_crossings)} color="orange" />
+      {/* <DataPanel label="Railway Crossing" value={displayValue(railwayValue)} color="orange" />
+      <DataPanel label="High-voltage Transmission Corridors" value={displayValue(detailData.high_voltage_transmission_corridors)} color="orange" />
+      <DataPanel label="Existing linear infrastructure in isolated stretches" value={displayValue(detailData.existing_linear_infrastructure)} color="orange" /> */}
       </div>
-      <div className="grid grid-cols-3 gap-1">
-        <DataPanel label="Tahasil" value={displayValue(detailData.tahasil)} color="green" />
-        <DataPanel label="Village" value={displayValue(detailData.village)} color="green" />
-        <DataPanel label="Ground Temperature" value={displayValue(detailData.ground_temperature)} color="green" />
+      <div className="grid grid-cols-4 gap-1">
+        {/* <DataPanel label="Land Use" value={displayValue(detailData.land_use)} color="orange" />
+        <DataPanel label="Land Ownership & ROU" value={displayValue(detailData.land_ownership_rou)} color="orange" /> */}
+        {/* <DataPanel label="Ground Temperature" value={displayValue(detailData.ground_temperature)} color="green" /> */}
       </div>
 
       {/* TOPOGRAPHY */}
-      <DataPanel label="TOPOGRAPHY" header={true} icon={<Layers className="w-3.5 h-3.5 text-emerald-400" />} />
-      <div className="grid grid-cols-1 gap-1" >
-        <DataPanel label="Terrain" value={displayValue(detailData.terrain)} color="green" />
+      <DataPanel label="Topography" header={true} icon={<Layers className="w-3.5 h-3.5 text-emerald-400" />} />
+      <div className="grid grid-cols-3 gap-1" >
+        <DataPanel label="Elevation" value={displayValue(detailData.elevation_m)} color="red" />
+        <DataPanel label="Terrain" value={displayValue(detailData.terrain)} color="red" />
+        <DataPanel label="Ground Temperature" value={displayValue(detailData.ground_temperature)} color="red" />
+
       </div>
 
       {/* NATURAL CONSTRAINTS */}
-      <DataPanel label="NATURAL CONSTRAINTS" header={true} icon={<Layers className="w-3.5 h-3.5 text-cyan-400" />} />
-      <div className="grid grid-cols-4 gap-1">
+      <DataPanel label="Natural Constraints" header={true} icon={<Layers className="w-3.5 h-3.5 text-cyan-400" />} />
+      <div className="grid grid-cols-3 gap-1">
         <DataPanel label="Major River Crossing" value={displayValue(detailData.major_river_crossing)} color="blue" />
-        <DataPanel label="Nallahs and Minor Drainage Channels" value={displayValue(detailData.nallahs_minor_drainage)} color="blue" />
-        <DataPanel label="Trees Between Route" value={displayValue(detailData.trees_between_route)} color="blue" />
-        <DataPanel label="Low-lying Agricultural Areas Seasonal Waterlogging" value={displayValue(detailData.low_lying_agricultural_waterlogging)} color="blue" />
+        <DataPanel label="Nallahs and Minor Drainage" value={displayValue(detailData.nallahs_minor_drainage)} color="blue" />
+        <DataPanel label="Tree Between Route" value={displayValue(detailData.trees_between_route)} color="blue" />
+        {/* <DataPanel label="Low-lying Agricultural Areas Seasonal Waterlogging" value={displayValue(detailData.low_lying_agricultural_waterlogging)} color="blue" /> */}
       </div>
 
       {/* SAFETY & REGULATORY SCREENING */}
-      <DataPanel label="SAFETY & REGULATORY SCREENING" header={true} icon={<Layers className="w-3.5 h-3.5 text-red-400" />} />
+      <DataPanel label="Safety & Regulatory Screening" header={true} icon={<Layers className="w-3.5 h-3.5 text-red-400" />} />
       <div className="grid grid-cols-4 gap-1">
-        <DataPanel label="Ground Elevation" value={displayValue(detailData.elevation_m)} color="red" />
-        <DataPanel label="Ground Temperature" value={displayValue(detailData.ground_temperature)} color="red" />
-        <DataPanel label="Population density" value={displayValue(detailData.population_density)} color="red" />
-        <DataPanel label="Safety Exclusion Zones" value={displayValue(detailData.safety_exclusion_zones)} color="red" />
+        <DataPanel label="Railway Crossing" value={displayValue(railwayValue)} color="yellow" />
+        <DataPanel label="Transmission Line Crossing" value={displayValue(detailData.high_voltage_transmission_corridors)} color="yellow" />
+        <DataPanel label="Infrastructure" value={displayValue(detailData.existing_linear_infrastructure)} color="yellow" />
+        <DataPanel label="Culvert" value={displayValue(detailData.culvert)} color="yellow" />
       </div>
 
       {/* RISK IDENTIFICATION */}
-      <DataPanel label="RISK IDENTIFICATION" header={true} icon={<Layers className="w-3.5 h-3.5 text-yellow-400" />} />
-      <div className="grid grid-cols-3 gap-1">
-        <DataPanel label="Risk Category" value={displayValue(detailData.risk_category)} color="yellow" />
-        <DataPanel label="Risk Level" value={displayValue(detailData.risk_level)} color="yellow" />
-        <DataPanel label="Flood Prone Zone" value={displayValue(detailData.flood_prone_zone)} color="yellow" />
+      <DataPanel label="Risk Identification" header={true} icon={<Layers className="w-3.5 h-3.5 text-yellow-400" />} />
+      <div className="grid grid-cols-4 gap-1">
+      <DataPanel label="Flood Prone Zone" value={displayValue(detailData.flood_prone_zone)} color="red" />
+      <DataPanel label="Water Logging" value={displayValue(detailData.low_lying_agricultural_waterlogging)} color="red" />
+        <DataPanel label="Risk Category" value={displayValue(detailData.risk_category)} color="red" />
+        <DataPanel label="Risk Level" value={displayValue(detailData.risk_level)} color="red" />
       </div>
 
       {/* Soil At 1/2/3/4 m Depth – visible only when an orange (soil) point is selected on the map */}
