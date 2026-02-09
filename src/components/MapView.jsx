@@ -128,6 +128,17 @@ function getChainageFromGasRow(row) {
   return key ? row[key] : null
 }
 
+// Get flood prone zone value from a DATA_Gas_Pipeline row
+function getFloodProneZoneFromGasRow(row) {
+  if (!row || typeof row !== 'object') return null
+  // Try different possible field names
+  const val = row.flood_prone_zone_area_acres_0 || 
+              row.flood_prone_zone || 
+              row.flood_prone_zone_km ||
+              null
+  return val != null && val !== '' ? String(val) : null
+}
+
 // Get start/end [lat, lng] from a DATA_Gas_Pipeline row
 function getStartEndFromGasRow(row) {
   if (!row || typeof row !== 'object') return null
@@ -502,6 +513,7 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
   const fileInputRef = useRef(null)
   const [gasPipelineRows, setGasPipelineRows] = useState([])
   const [chainageSegment, setChainageSegment] = useState(null) // { start: [lat,lng], end: [lat,lng] } when a chainage is selected
+  const [floodProneZoneSegments, setFloodProneZoneSegments] = useState([]) // Array of segments for flood prone zone filter
 
   // Load DATA_Gas_Pipeline.json for chainage segment (start→end line)
   useEffect(() => {
@@ -520,14 +532,26 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
     loadGasPipeline()
   }, [])
 
+  // Filter gasPipelineRows based on floodProneZone if filter is set
+  const filteredGasPipelineRows = (() => {
+    if (!filters?.floodProneZone || filters.floodProneZone === 'All' || gasPipelineRows.length === 0) {
+      return gasPipelineRows
+    }
+    return gasPipelineRows.filter((row) => {
+      const rowFloodProneZone = getFloodProneZoneFromGasRow(row)
+      if (rowFloodProneZone == null) return false
+      return String(rowFloodProneZone) === String(filters.floodProneZone)
+    })
+  })()
+
   // When chainage is selected, find matching row and set segment for start→end line
   useEffect(() => {
-    if (!filters?.chainage || filters.chainage === 'All' || gasPipelineRows.length === 0) {
+    if (!filters?.chainage || filters.chainage === 'All' || filteredGasPipelineRows.length === 0) {
       setChainageSegment(null)
       return
     }
     const chainageNum = parseFloat(filters.chainage)
-    let match = gasPipelineRows.find((row) => {
+    let match = filteredGasPipelineRows.find((row) => {
       const rowChainage = getChainageFromGasRow(row)
       if (rowChainage == null) return false
       const rowNum = parseFloat(rowChainage)
@@ -535,7 +559,7 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
       return Math.abs(chainageNum - rowNum) < 0.001
     })
     if (!match && !Number.isNaN(chainageNum)) {
-      const withNum = gasPipelineRows
+      const withNum = filteredGasPipelineRows
         .map((row) => ({ row, chainage: getChainageFromGasRow(row) }))
         .filter((x) => x.chainage != null)
         .map((x) => ({ ...x, num: parseFloat(x.chainage) }))
@@ -549,7 +573,28 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
     }
     const segment = match ? getStartEndFromGasRow(match) : null
     setChainageSegment(segment)
-  }, [filters?.chainage, gasPipelineRows])
+  }, [filters?.chainage, filters?.floodProneZone, filteredGasPipelineRows])
+
+  // When floodProneZone is selected (and no chainage), show all matching segments
+  useEffect(() => {
+    if (filters?.chainage && filters.chainage !== 'All') {
+      // If chainage is selected, don't show flood prone zone segments (chainage takes priority)
+      setFloodProneZoneSegments([])
+      return
+    }
+    
+    if (!filters?.floodProneZone || filters.floodProneZone === 'All' || filteredGasPipelineRows.length === 0) {
+      setFloodProneZoneSegments([])
+      return
+    }
+
+    // Get all segments that match the flood prone zone filter
+    const segments = filteredGasPipelineRows
+      .map((row) => getStartEndFromGasRow(row))
+      .filter((segment) => segment != null)
+    
+    setFloodProneZoneSegments(segments)
+  }, [filters?.floodProneZone, filters?.chainage, filteredGasPipelineRows])
 
   // Load Elevation_data_100m_distance.json and build [lat, lng] positions + point info
   useEffect(() => {
@@ -588,6 +633,38 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
       : elevationPoints
 
   const elevationPositions = filteredElevationPoints.map((p) => p.position)
+
+  // Trees for selected chainage – show trees from the elevation point for this chainage and the next point
+  const chainageTrees = (() => {
+    if (!filters?.chainage || filters.chainage === 'All') return []
+    if (!elevationPoints || elevationPoints.length === 0) return []
+
+    const filterChainageStr = String(filters.chainage).trim()
+
+    // Find the index of the elevation point whose chainage matches the selected chainage
+    const selectedIndex = elevationPoints.findIndex(
+      (p) => String(p.chainage).trim() === filterChainageStr,
+    )
+    if (selectedIndex < 0) return []
+
+    const currentPoint = elevationPoints[selectedIndex]
+    const nextPoint =
+      selectedIndex < elevationPoints.length - 1
+        ? elevationPoints[selectedIndex + 1]
+        : null
+
+    let treesToShow = []
+
+    if (currentPoint && Array.isArray(currentPoint.trees)) {
+      treesToShow = [...treesToShow, ...currentPoint.trees]
+    }
+
+    if (nextPoint && Array.isArray(nextPoint.trees)) {
+      treesToShow = [...treesToShow, ...nextPoint.trees]
+    }
+
+    return treesToShow
+  })()
 
   // Load soil data points from Soil_Data_10km_1.json (Sheet3)
   useEffect(() => {
@@ -894,33 +971,90 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
           </>
         )}
 
-        {/* Chainage segment: start→end line + markers when a chainage is selected (from DATA_Gas_Pipeline.json) */}
-        {chainageSegment && (
-          <>
-            <Polyline
-              positions={[chainageSegment.start, chainageSegment.end]}
-              pathOptions={{ color: '#f59e0b', weight: 5, opacity: 0.95 }}
-            />
-            <Marker
-              position={chainageSegment.end}
-              icon={L.divIcon({
-                className: 'chainage-segment-marker',
-                html: `<div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:linear-gradient(145deg,#ef4444,#dc2626);border:2px solid rgba(255,255,255,0.95);border-radius:50%;box-shadow:0 3px 8px rgba(0,0,0,0.35);font-weight:700;color:#fff;font-size:12px;">E</div>`,
-                iconSize: [32, 32],
-                iconAnchor: [16, 16]
-              })}
-            >
-              <Popup>
-                <div className="p-2 min-w-[160px]">
-                  <h3 className="font-bold text-sm text-gray-800">End</h3>
-                  <p className="text-xs text-gray-600">Lat: {chainageSegment.end[0].toFixed(6)}</p>
-                  <p className="text-xs text-gray-600">Lon: {chainageSegment.end[1].toFixed(6)}</p>
-                </div>
-              </Popup>
-            </Marker>
-            <FitStartEndBounds startLatLng={chainageSegment.start} endLatLng={chainageSegment.end} />
-          </>
-        )}
+        {/* Chainage segment: start→end line + markers when a chainage is selected (from DATA_Gas_Pipeline.json)
+            If a Flood Prone Zone filter is selected AND the selected chainage row has the same flood value,
+            highlight this single chainage segment in blue. */}
+        {chainageSegment && (() => {
+          // Determine if this selected chainage belongs to the selected flood prone zone
+          let isChainageInSelectedFloodZone = false
+          if (filters?.floodProneZone && filters.floodProneZone !== 'All' && gasPipelineRows.length > 0 && filters?.chainage && filters.chainage !== 'All') {
+            const filterFloodStr = String(filters.floodProneZone).trim()
+            const filterFloodNum = parseFloat(filterFloodStr)
+            const chainageNum = parseFloat(filters.chainage)
+
+            const matchingRow = gasPipelineRows.find((row) => {
+              const rowChainage = getChainageFromGasRow(row)
+              if (rowChainage == null) return false
+              const rowChainNum = parseFloat(rowChainage)
+              if (Number.isNaN(chainageNum) || Number.isNaN(rowChainNum)) return false
+              return Math.abs(rowChainNum - chainageNum) < 0.001
+            })
+
+            if (matchingRow) {
+              const rowFloodRaw = getFloodProneZoneFromGasRow(matchingRow)
+              if (rowFloodRaw != null) {
+                const rowFloodStr = String(rowFloodRaw).trim()
+                const rowFloodNum = parseFloat(rowFloodStr)
+
+                // Exact string match
+                if (rowFloodStr === filterFloodStr) {
+                  isChainageInSelectedFloodZone = true
+                } else if (!Number.isNaN(rowFloodNum) && !Number.isNaN(filterFloodNum)) {
+                  // Numeric match with small tolerance
+                  if (Math.abs(rowFloodNum - filterFloodNum) < 1e-6) {
+                    isChainageInSelectedFloodZone = true
+                  }
+                }
+              }
+            }
+          }
+
+          const lineColor = isChainageInSelectedFloodZone ? '#3b82f6' : '#f59e0b'
+          const markerGradient = isChainageInSelectedFloodZone
+            ? 'linear-gradient(145deg,#3b82f6,#2563eb)'
+            : 'linear-gradient(145deg,#ef4444,#dc2626)'
+
+          return (
+            <>
+              <Polyline
+                positions={[chainageSegment.start, chainageSegment.end]}
+                pathOptions={{ color: lineColor, weight: 5, opacity: 0.95 }}
+              />
+              <Marker
+                position={chainageSegment.end}
+                icon={L.divIcon({
+                  className: 'chainage-segment-marker',
+                  html: `<div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:${markerGradient};border:2px solid rgba(255,255,255,0.95);border-radius:50%;box-shadow:0 3px 8px rgba(0,0,0,0.35);font-weight:700;color:#fff;font-size:12px;">E</div>`,
+                  iconSize: [32, 32],
+                  iconAnchor: [16, 16]
+                })}
+              >
+                <Popup>
+                  <div className="p-2 min-w-[160px]">
+                    <h3 className="font-bold text-sm text-gray-800">End</h3>
+                    <p className="text-xs text-gray-600">Lat: {chainageSegment.end[0].toFixed(6)}</p>
+                    <p className="text-xs text-gray-600">Lon: {chainageSegment.end[1].toFixed(6)}</p>
+                    {isChainageInSelectedFloodZone && (
+                      <p className="text-xs text-blue-600 font-semibold">
+                        Flood Prone Zone: {filters.floodProneZone}
+                      </p>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+              <FitStartEndBounds startLatLng={chainageSegment.start} endLatLng={chainageSegment.end} />
+            </>
+          )
+        })()}
+
+        {/* Flood Prone Zone segments: show all segments matching the flood prone zone filter */}
+        {floodProneZoneSegments.length > 0 && floodProneZoneSegments.map((segment, index) => (
+          <Polyline
+            key={`flood-zone-${index}`}
+            positions={[segment.start, segment.end]}
+            pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.8 }}
+          />
+        ))}
 
         {/* Elevation path: polyline + point markers (from Elevation_data_100m_distance.json) */}
         {elevationPositions.length > 0 && (
@@ -959,6 +1093,77 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
             ))}
           </>
         )}
+
+        {/* Trees for selected chainage (from elevation data, without clicking) */}
+        {filters?.chainage &&
+          filters.chainage !== 'All' &&
+          chainageTrees.length > 0 &&
+          chainageTrees
+            .filter((t) => {
+              if (!filters?.treeHeight || filters.treeHeight === 'All') return true
+              return String(t.height) === String(filters.treeHeight)
+            })
+            .sort((a, b) => {
+              // Sort by height in ascending order
+              const heightA = parseFloat(a.height) || 0
+              const heightB = parseFloat(b.height) || 0
+              return heightA - heightB
+            })
+            .map((t, index) => {
+              const tLat = parseFloat(t.latitude)
+              const tLng = parseFloat(t.longitude)
+              if (isNaN(tLat) || isNaN(tLng)) return null
+
+              // Icon size based on height
+              const treeHeight = parseFloat(t.height) || 1
+              const baseSize = 20
+              const sizeMultiplier = Math.min(treeHeight / 10, 2)
+              const iconSize = Math.max(
+                baseSize,
+                Math.min(baseSize * (1 + sizeMultiplier * 0.5), 40),
+              )
+              const fontSize = Math.max(
+                10,
+                Math.min(iconSize * 0.5, 18),
+              )
+
+              const treeIcon = L.divIcon({
+                className: 'custom-tree-marker-chainage',
+                html: `<div style="display:flex;align-items:center;justify-content:center;width:${iconSize}px;height:${iconSize}px;background:linear-gradient(145deg,#16a34a,#22c55e);border:2px solid rgba(255,255,255,0.95);border-radius:50%;box-shadow:0 3px 8px rgba(0,0,0,0.35);"><i class="fa-solid fa-tree" style="color:#fff;font-size:${fontSize}px;"></i></div>`,
+                iconSize: [iconSize, iconSize],
+                iconAnchor: [iconSize / 2, iconSize / 2],
+              })
+
+              return (
+                <Marker
+                  key={`chainage-tree-${index}`}
+                  position={[tLat, tLng]}
+                  icon={treeIcon}
+                >
+                  <Popup>
+                    <div className="p-2">
+                      <h3 className="font-bold text-sm mb-1">Tree (Chainage)</h3>
+                      {t.height && (
+                        <p className="text-xs text-gray-600">
+                          Height: {t.height} m
+                        </p>
+                      )}
+                      {filters?.chainage && (
+                        <p className="text-xs text-gray-600">
+                          Chainage: {filters.chainage}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-600">
+                        Lat: {tLat.toFixed(6)}
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        Lng: {tLng.toFixed(6)}
+                      </p>
+                    </div>
+                  </Popup>
+                </Marker>
+              )
+            })}
 
         {/* Soil data points (from Soil_Data_10km_1.json using DMS Locations) */}
         {soilPoints.map((pt, index) => (
@@ -1001,24 +1206,84 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
           </Marker>
         ))}
 
-        {/* Tree markers from elevation data for selected chainage point only (filtered by tree height dropdown) */}
-        {selectedElevationPoint &&
-          Array.isArray(selectedElevationPoint.trees) &&
-          selectedElevationPoint.trees
+        {/* Tree markers from elevation data between clicked point and next point (filtered by tree height dropdown) */}
+        {selectedElevationPoint && (() => {
+          // Find the index of the selected elevation point
+          const selectedIndex = filteredElevationPoints.findIndex(
+            (p) => p.position[0] === selectedElevationPoint.position[0] && 
+                   p.position[1] === selectedElevationPoint.position[1]
+          )
+          
+          // Get trees that are between the clicked point and the next point
+          let treesToShow = []
+          if (selectedIndex >= 0) {
+            const currentPoint = filteredElevationPoints[selectedIndex]
+            const nextPoint = filteredElevationPoints[selectedIndex + 1]
+            
+            if (currentPoint) {
+              // Get all trees from elevation points between current and next
+              const startLat = currentPoint.position[0]
+              const startLng = currentPoint.position[1]
+              const endLat = nextPoint ? nextPoint.position[0] : startLat
+              const endLng = nextPoint ? nextPoint.position[1] : startLng
+              
+              // Collect trees from current point and all intermediate points
+              for (let i = selectedIndex; i <= (nextPoint ? selectedIndex + 1 : selectedIndex); i++) {
+                const point = filteredElevationPoints[i]
+                if (point && Array.isArray(point.trees)) {
+                  // Filter trees that are between the start and end points
+                  const filteredTrees = point.trees.filter((t) => {
+                    const tLat = parseFloat(t.latitude)
+                    const tLng = parseFloat(t.longitude)
+                    if (isNaN(tLat) || isNaN(tLng)) return false
+                    
+                    // Check if tree is between the two elevation points
+                    const minLat = Math.min(startLat, endLat)
+                    const maxLat = Math.max(startLat, endLat)
+                    const minLng = Math.min(startLng, endLng)
+                    const maxLng = Math.max(startLng, endLng)
+                    
+                    return tLat >= minLat && tLat <= maxLat && tLng >= minLng && tLng <= maxLng
+                  })
+                  treesToShow = [...treesToShow, ...filteredTrees]
+                }
+              }
+            }
+          } else {
+            // Fallback: use trees from selectedElevationPoint if not found in filteredElevationPoints
+            if (Array.isArray(selectedElevationPoint.trees)) {
+              treesToShow = [...selectedElevationPoint.trees]
+            }
+          }
+          
+          return treesToShow
             .filter((t) => {
               if (!filters?.treeHeight || filters.treeHeight === 'All') return true
               return String(t.height) === String(filters.treeHeight)
+            })
+            .sort((a, b) => {
+              // Sort by height in ascending order (increasing way)
+              const heightA = parseFloat(a.height) || 0
+              const heightB = parseFloat(b.height) || 0
+              return heightA - heightB
             })
             .map((t, index) => {
             const tLat = parseFloat(t.latitude)
             const tLng = parseFloat(t.longitude)
             if (isNaN(tLat) || isNaN(tLng)) return null
 
+            // Calculate icon size based on tree height (increasing size for taller trees)
+            const treeHeight = parseFloat(t.height) || 1
+            const baseSize = 20
+            const sizeMultiplier = Math.min(treeHeight / 10, 2) // Scale up to 2x for very tall trees
+            const iconSize = Math.max(baseSize, Math.min(baseSize * (1 + sizeMultiplier * 0.5), 40))
+            const fontSize = Math.max(10, Math.min(iconSize * 0.5, 18))
+
             const treeIcon = L.divIcon({
               className: 'custom-tree-marker-elevation',
-              html: `<div style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;background:linear-gradient(145deg,#16a34a,#22c55e);border:2px solid rgba(255,255,255,0.95);border-radius:50%;box-shadow:0 3px 8px rgba(0,0,0,0.35);"><i class="fa-solid fa-tree" style="color:#fff;font-size:13px;"></i></div>`,
-              iconSize: [26, 26],
-              iconAnchor: [13, 13],
+              html: `<div style="display:flex;align-items:center;justify-content:center;width:${iconSize}px;height:${iconSize}px;background:linear-gradient(145deg,#16a34a,#22c55e);border:2px solid rgba(255,255,255,0.95);border-radius:50%;box-shadow:0 3px 8px rgba(0,0,0,0.35);"><i class="fa-solid fa-tree" style="color:#fff;font-size:${fontSize}px;"></i></div>`,
+              iconSize: [iconSize, iconSize],
+              iconAnchor: [iconSize / 2, iconSize / 2],
             })
 
             return (
@@ -1053,7 +1318,8 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
                 </Popup>
               </Marker>
             )
-          })}
+          })
+        })()}
 
         {/* Tower Markers */}
         {towersToDisplay.map((tower) => {
