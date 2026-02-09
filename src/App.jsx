@@ -2,6 +2,7 @@ import { useState } from 'react'
 import FilterControls from './components/FilterControls'
 import MapView from './components/MapView'
 import DataPanels from './components/DataPanels'
+import RightSideFilters from './components/RightSideFilters'
 import './App.css'
 
 function App() {
@@ -9,7 +10,9 @@ function App() {
     towerNo: 'All',
     selectedTowers: [],
     heightRange: 'All',
-    chainage: 'All'
+    chainage: 'All',
+    treeHeight: 'All',
+    floodProneZone: 'All'
   })
 
   const handleFilterChange = (newFilters) => {
@@ -33,7 +36,7 @@ function App() {
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Map */}
-        <div className="w-[73%] relative bg-gray-900/50 p-[1rem] rounded-lg">
+        <div className="w-[73%] relative bg-gray-900/50 p-[1rem] rounded-lg h-full">
           <MapView
             filters={filters}
             selectedTowerIndices={selectedTowerIndices}
@@ -41,14 +44,22 @@ function App() {
             setSelectedSoilPoint={setSelectedSoilPoint}
           />
         </div>
-        {/* Right Panel - Data */}
-        <div className="w-[27%] border-l border-gray-700/50 shadow-2xl">
-          <DataPanels
-            projectData={null}
-            selectedTowerIndices={selectedTowerIndices}
-            selectedSoilPoint={selectedSoilPoint}
-            selectedChainage={filters.chainage}
+        {/* Right Panel - Filters and Data */}
+        <div className="w-[27%] border-l border-gray-700/50 shadow-2xl flex flex-col overflow-hidden">
+          {/* Chainage and Tree Height Filters */}
+          <RightSideFilters 
+            filters={filters} 
+            onFilterChange={handleFilterChange}
           />
+          {/* Data Panels */}
+          <div className="flex-1 overflow-y-auto">
+            <DataPanels
+              projectData={null}
+              selectedTowerIndices={selectedTowerIndices}
+              selectedSoilPoint={selectedSoilPoint}
+              selectedChainage={filters.chainage}
+            />
+          </div>
         </div>
       </div>
     </div>
