@@ -65,12 +65,13 @@ function RightSideFilters({ filters, onFilterChange }) {
         
         // Get unique flood prone zone values
         const getFloodProneZoneValue = (row) => {
-          // Try different possible field names
-          const val = row.flood_prone_zone_area_acres_0 || 
+          // Try different possible field names (new CSV format first)
+          const val = row['Flood Prone Zone Area (Acres)'] ||
+                      row.flood_prone_zone_area_acres_0 || 
                       row.flood_prone_zone || 
                       row.flood_prone_zone_km ||
                       ''
-          if (val && val !== '' && val !== null && val !== undefined) {
+          if (val && val !== '' && val !== null && val !== undefined && val !== '0' && val !== 'NA') {
             return String(val)
           }
           return null
