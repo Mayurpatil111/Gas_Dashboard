@@ -17,7 +17,8 @@ import {
   XCircle,
   Layers,
   Info,
-  Pin
+  Pin,
+  X
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -61,7 +62,58 @@ const getStatusIcon = (value) => {
   return null
 }
 
-function DataPanel({ label, value, header = false, icon, color = 'blue' }) {
+// Clean encoding issues - replace corrupted characters with correct ones
+const cleanEncoding = (value) => {
+  if (typeof value !== 'string') return value
+  
+  // Replace corrupted degree symbols and other common encoding issues
+  // Handle various corrupted degree symbol patterns
+  let cleaned = value
+    .replace(/\uFFFD/g, '°') // Replace replacement character with degree symbol
+    .replace(/[^\x00-\x7F][^\x00-\x7F]/g, '°') // Replace corrupted degree in middle
+    .replace(/–/g, '-') // Replace en-dash with hyphen
+    .replace(/—/g, '-') // Replace em-dash with hyphen
+    .replace(/"/g, '"') // Replace corrupted quotes
+    .replace(/'/g, "'") // Replace corrupted apostrophe
+    .replace(/…/g, '...') // Replace ellipsis
+    .trim()
+  
+  // Fix common patterns like "20C" -> "20°C" and "20.217248N" -> "20.217248°N"
+  cleaned = cleaned.replace(/(\d+(?:\.\d+)?)([NS]|C)/g, '$1°$2')
+  cleaned = cleaned.replace(/(\d+(?:\.\d+)?)([EW])/g, '$1°$2')
+  
+  return cleaned
+}
+
+// Modal component for displaying full values
+function ValueModal({ isOpen, onClose, label, value }) {
+  if (!isOpen) return null
+  
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-white">{label}</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+        <div className="text-white text-lg whitespace-pre-wrap break-words">
+          {value || 'Absence'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DataPanel({ label, value, header = false, icon, color = 'blue', showLabelText = false, hideIcon = false }) {
+  const [showModal, setShowModal] = useState(false)
+  const valueStr = String(value || 'Absence')
+  const isLongValue = valueStr.length > 30 || valueStr.includes('\n') || valueStr.includes(',')
+  
   const colorClasses = {
     blue: {
       bg: 'from-blue-600/20 to-blue-800/20',
@@ -105,9 +157,9 @@ function DataPanel({ label, value, header = false, icon, color = 'blue' }) {
 
   if (header) {
     return (
-      <div className="bg-black  border-l-4 border-blue-500 rounded-lg p-2 mb-2 ">
+      <div className="bg-blue-600 border-l-4 border-blue-500 rounded-lg p-2 mb-2">
         <div className="flex items-center gap-1.5 ">
-          {icon || <Layers className="w-3.5 h-3.5 text-blue-400" />}
+          {!hideIcon && (icon || <Layers className="w-3.5 h-3.5 text-blue-400" />)}
           {/* Show header text with Times New Roman and normal casing */}
           <div
             className="text-white font-bold text-lg tracking-wide font-medium"
@@ -125,34 +177,159 @@ function DataPanel({ label, value, header = false, icon, color = 'blue' }) {
       className={`group relative border rounded-xl p-4 min-h-[88px] bg-gradient-to-br ${colorStyle.bg} ${colorStyle.border} transition-all duration-300 hover:shadow-xl ${colorStyle.hoverShadow} hover:scale-[1.02] ${colorStyle.hoverBorder} cursor-pointer`}
     >
       <div className="flex flex-col items-center justify-center gap-2">
-        <div className="flex items-center justify-center gap-2 w-full">
-          {cardIcon}
-          <span className="relative group/pin inline-flex" title={label}>
-            <Pin className="w-4 h-4 text-white/80 hover:text-white cursor-help shrink-0" aria-hidden />
-            <span className="pointer-events-none absolute left-1/2 bottom-full z-[100] mb-1.5 -translate-x-1/2 max-w-[260px] whitespace-normal break-words rounded-md bg-black/95 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/pin:opacity-100 text-center">
-              {label}
-            </span>
-          </span>
-        </div>
+        {showLabelText ? (
+          <div className="text-sm font-semibold text-white/90 text-center w-full">
+            {label}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2 w-full">
+            {!hideIcon && cardIcon}
+            {!hideIcon && (
+              <span className="relative group/pin inline-flex" title={label}>
+                <Pin className="w-4 h-4 text-white/80 hover:text-white cursor-help shrink-0" aria-hidden />
+                <span className="pointer-events-none absolute left-1/2 bottom-full z-[100] mb-1.5 -translate-x-1/2 max-w-[260px] whitespace-normal break-words rounded-md bg-black/95 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/pin:opacity-100 text-center">
+                  {label}
+                </span>
+              </span>
+            )}
+          </div>
+        )}
         {getStatusIcon(value)}
       </div>
       <div
-        className={`text-lg font-semibold mt-2 ${getValueColor(value)} transition-colors duration-200 flex items-center justify-center text-center`}
+        className={`text-lg font-semibold mt-2 ${getValueColor(value)} transition-colors duration-200 flex items-center justify-center text-center ${isLongValue ? 'cursor-pointer hover:underline' : ''}`}
         style={{ color: '#FFFFFF' }}
+        onClick={isLongValue ? () => setShowModal(true) : undefined}
+        title={isLongValue ? 'Click to view full value' : ''}
       >
-        {value}
+        {isLongValue ? (
+          <span 
+            className="break-words overflow-hidden"
+            style={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              maxHeight: '3em',
+              lineHeight: '1.5em'
+            }}
+          >
+            {cleanEncoding(valueStr)}
+          </span>
+        ) : (
+          <span className="break-words">{cleanEncoding(valueStr)}</span>
+        )}
       </div>
+      {isLongValue && (
+        <div className="text-xs text-white/60 mt-1">Click to view full</div>
+      )}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-transparent to-gray-900/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+             <ValueModal
+               isOpen={showModal}
+               onClose={() => setShowModal(false)}
+               label={label}
+               value={cleanEncoding(valueStr)}
+             />
     </div>
   )
 }
 
 // Map Soil_Data_10km_1.json flat row to at_X_m_depth shape used by panels
-// Supports both legacy (col_5, at_1_m_depth) and Updated Soil Data (clay, at_1_m_depth_dry_density_g_cc, clay_1, etc.)
+// Supports legacy (col_5, at_1_m_depth), normalized (at_1_m_depth_dry_density_g_cc, clay), and new CSV format ("At 1 m Depth - Dry Density (g/cc)", "Clay %")
 function soilRawToDepthData(raw) {
   if (!raw) return { at_1_m_depth: {}, at_2_m_depth: {}, at_3_m_depth: {}, at_4_m_depth: {} }
-  const isNewFormat = raw.at_1_m_depth_dry_density_g_cc != null || raw.clay != null
-  if (isNewFormat) {
+  
+  // Check for new CSV format (has "At 1 m Depth - Dry Density (g/cc)")
+  const isNewCsvFormat = raw['At 1 m Depth - Dry Density (g/cc)'] != null
+  // Check for normalized format (at_1_m_depth_dry_density_g_cc, clay)
+  const isNormalizedFormat = raw.at_1_m_depth_dry_density_g_cc != null || raw.clay != null
+  
+  if (isNewCsvFormat) {
+    // New CSV format with combined headers like "At 1 m Depth - Dry Density (g/cc)"
+    return {
+      at_1_m_depth: {
+        dry_density_gcc: raw['At 1 m Depth - Dry Density (g/cc)'],
+        clay: raw['At 1 m Depth - Clay %'],
+        gravel: raw['At 1 m Depth - Gravel %'],
+        sand: raw['At 1 m Depth - Sand %'],
+        silt: raw['At 1 m Depth - Silt %'],
+        moisture: raw['At 1 m Depth - Moisture %'],
+        bulk_density_gmcc: raw['At 1 m Depth - Bulk Density (gm/cc)'],
+        liquid_limit: raw['At 1 m Depth - Liquid Limit %'],
+        plastic_limit: raw['At 1 m Depth - Plastic Limit %'],
+        plasticity_index: raw['At 1 m Depth - Plasticity Index %'],
+        max_dry_density_gmcc: raw['At 1 m Depth - Max. Dry Density (gm/cc)'],
+        free_swelling_index: raw['At 1 m Depth - Free Swelling Index %'],
+        ucs_kgcm: raw['At 1 m Depth - UCS (kg/cm²)'],
+        soil_class: raw['At 1 m Depth - Soil Class'],
+        specific_gravity: raw['At 1 m Depth - Specific Gravity'],
+        safe_bearing_capacity: raw['At 1 m Depth - Safe Bearing Capacity T/m²'],
+        sbc: raw['At 1 m Depth - Safe Bearing Capacity T/m²'],
+        cbr_value: raw['At 1 m Depth - CBR (%)']
+      },
+      at_2_m_depth: {
+        dry_density_gcc: raw['At 2 m Depth - Dry Density (g/cc)'],
+        clay: raw['At 2 m Depth - Clay %'],
+        gravel: raw['At 2 m Depth - Gravel %'],
+        sand: raw['At 2 m Depth - Sand %'],
+        silt: raw['At 2 m Depth - Silt %'],
+        moisture: raw['At 2 m Depth - Moisture %'],
+        bulk_density_gmcc: raw['At 2 m Depth - Bulk Density (gm/cc)'],
+        liquid_limit: raw['At 2 m Depth - Liquid Limit %'],
+        plastic_limit: raw['At 2 m Depth - Plastic Limit %'],
+        plasticity_index: raw['At 2 m Depth - Plasticity Index %'],
+        max_dry_density_gmcc: raw['At 2 m Depth - Max. Dry Density (gm/cc)'],
+        free_swelling_index: raw['At 2 m Depth - Free Swelling Index %'],
+        ucs_kgcm: raw['At 2 m Depth - UCS (kg/cm²)'],
+        soil_class: raw['At 2 m Depth - Soil Class'],
+        specific_gravity: raw['At 2 m Depth - Specific Gravity'],
+        safe_bearing_capacity: raw['At 2 m Depth - Safe Bearing Capacity T/m²'],
+        sbc: raw['At 2 m Depth - Safe Bearing Capacity T/m²'],
+        cbr_value: raw['At 2 m Depth - CBR (%)']
+      },
+      at_3_m_depth: {
+        dry_density_gcc: raw['At 3 m Depth - Dry Density (g/cc)'],
+        clay: raw['At 3 m Depth - Clay %'],
+        gravel: raw['At 3 m Depth - Gravel %'],
+        sand: raw['At 3 m Depth - Sand %'],
+        silt: raw['At 3 m Depth - Silt %'],
+        moisture: raw['At 3 m Depth - Moisture %'],
+        bulk_density_gmcc: raw['At 3 m Depth - Bulk Density (gm/cc)'],
+        liquid_limit: raw['At 3 m Depth - Liquid Limit %'],
+        plastic_limit: raw['At 3 m Depth - Plastic Limit %'],
+        plasticity_index: raw['At 3 m Depth - Plasticity Index %'],
+        max_dry_density_gmcc: raw['At 3 m Depth - Max. Dry Density (gm/cc)'],
+        free_swelling_index: raw['At 3 m Depth - Free Swelling Index %'],
+        ucs_kgcm: raw['At 3 m Depth - UCS (kg/cm²)'],
+        soil_class: raw['At 3 m Depth - Soil Class'],
+        specific_gravity: raw['At 3 m Depth - Specific Gravity'],
+        safe_bearing_capacity: raw['At 3 m Depth - Safe Bearing Capacity T/m²'],
+        sbc: raw['At 3 m Depth - Safe Bearing Capacity T/m²'],
+        cbr_value: raw['At 3 m Depth - CBR (%)']
+      },
+      at_4_m_depth: {
+        dry_density_gcc: raw['At 4 m Depth - Dry Density (g/cc)'],
+        clay: raw['At 4 m Depth - Clay %'],
+        gravel: raw['At 4 m Depth - Gravel %'],
+        sand: raw['At 4 m Depth - Sand %'],
+        silt: raw['At 4 m Depth - Silt %'],
+        moisture: raw['At 4 m Depth - Moisture %'],
+        bulk_density_gmcc: raw['At 4 m Depth - Bulk Density (gm/cc)'],
+        liquid_limit: raw['At 4 m Depth - Liquid Limit %'],
+        plastic_limit: raw['At 4 m Depth - Plastic Limit %'],
+        plasticity_index: raw['At 4 m Depth - Plasticity Index %'],
+        max_dry_density_gmcc: raw['At 4 m Depth - Max. Dry Density (gm/cc)'],
+        free_swelling_index: raw['At 4 m Depth - Free Swelling Index %'],
+        ucs_kgcm: raw['At 4 m Depth - UCS (kg/cm²)'],
+        soil_class: raw['At 4 m Depth - Soil Class'],
+        specific_gravity: raw['At 4 m Depth - Specific Gravity'],
+        safe_bearing_capacity: raw['At 4 m Depth - Safe Bearing Capacity T/m²'],
+        sbc: raw['At 4 m Depth - Safe Bearing Capacity T/m²'],
+        cbr_value: raw['At 4 m Depth - CBR (%)']
+      }
+    }
+  }
+  
+  if (isNormalizedFormat) {
     return {
       at_1_m_depth: {
         dry_density_gcc: raw.at_1_m_depth_dry_density_g_cc,
@@ -171,7 +348,8 @@ function soilRawToDepthData(raw) {
         soil_class: raw.soil_class,
         specific_gravity: raw.specific_gravity,
         safe_bearing_capacity: raw.safe_bearing_capacity_t_m,
-        sbc: raw.safe_bearing_capacity_t_m
+        sbc: raw.safe_bearing_capacity_t_m,
+        cbr_value: raw.cbr
       },
       at_2_m_depth: {
         dry_density_gcc: raw.at_2_m_depth_dry_density_g_cc,
@@ -190,7 +368,8 @@ function soilRawToDepthData(raw) {
         soil_class: raw.soil_class_1,
         specific_gravity: raw.specific_gravity_1,
         safe_bearing_capacity: raw.safe_bearing_capacity_t_m_1,
-        sbc: raw.safe_bearing_capacity_t_m_1
+        sbc: raw.safe_bearing_capacity_t_m_1,
+        cbr_value: raw.cbr_1
       },
       at_3_m_depth: {
         dry_density_gcc: raw.at_3_m_depth_dry_density_g_cc,
@@ -209,7 +388,8 @@ function soilRawToDepthData(raw) {
         soil_class: raw.soil_class_2,
         specific_gravity: raw.specific_gravity_2,
         safe_bearing_capacity: raw.safe_bearing_capacity_t_m_2,
-        sbc: raw.safe_bearing_capacity_t_m_2
+        sbc: raw.safe_bearing_capacity_t_m_2,
+        cbr_value: raw.cbr_2
       },
       at_4_m_depth: {
         dry_density_gcc: raw.at_4_m_depth_dry_density_g_cc,
@@ -228,7 +408,8 @@ function soilRawToDepthData(raw) {
         soil_class: raw.soil_class_3,
         specific_gravity: raw.specific_gravity_3,
         safe_bearing_capacity: raw.safe_bearing_capacity_t_m_3,
-        sbc: raw.safe_bearing_capacity_t_m_3
+        sbc: raw.safe_bearing_capacity_t_m_3,
+        cbr_value: raw.cbr_3
       }
     }
   }
@@ -312,9 +493,12 @@ function soilRawToDepthData(raw) {
   }
 }
 
-// Get chainage value from a DATA_Gas_Pipeline row (key like chainage_228579000000001)
+// Get chainage value from a DATA_Gas_Pipeline row (supports both old format with chainage_ prefix and new format with "Chainage")
 function getChainageFromGasRow(row) {
   if (!row || typeof row !== 'object') return null
+  // Try new format first (clean field name)
+  if (row.Chainage != null && row.Chainage !== '') return String(row.Chainage)
+  // Fallback to old format (normalized key)
   const key = Object.keys(row).find((k) => k.toLowerCase().startsWith('chainage_'))
   return key ? row[key] : null
 }
@@ -331,38 +515,52 @@ function getRowVal(row, ...keys) {
 
 function gasRowToDetailData(row) {
   if (!row) return {}
+  
+  // Support both new format (clean field names) and old format (normalized keys)
+  const getVal = (newKey, ...oldKeys) => {
+    if (row[newKey] != null && row[newKey] !== '') return String(row[newKey])
+    return getRowVal(row, ...oldKeys)
+  }
+  
+  const distance = getVal('Distance', 'distance_0')
+  const waterlogging = getVal('Waterlogging Area (Acres)', 'waterlogging_area_acres_0')
+  const floodProne = getVal('Flood Prone Zone Area (Acres)', 'flood_prone_zone_area_acres_0', 'flood_prone_zone', 'flood_prone_zone_km')
+  
   return {
-    state: row.state_odisha ?? '',
-    land_use: row.land_use_agriculture ?? '',
-    land_ownership_rou: row.land_ownership_rou_farm ?? '',
-    route_alignment_km: row.distance_0 != null ? `${row.distance_0} km` : '',
-    road_crossings: row.road_crossing_absence ?? '',
-    railway_crossing_electrified: row.railway_crossing_absence ?? '',
+    state: getVal('State', 'state_odisha'),
+    district: getVal('District', 'district_ganjam'),
+    land_use: getVal('Land Use', 'land_use_agriculture'),
+    land_ownership_rou: getVal('Land Ownership & ROU', 'land_ownership_rou_farm'),
+    total_plot_no: `Sr. No ${getVal('Plot/ Survey No.', 'Total Plot No', 'total_plot_no_absence')}`,
+    land_area_acres: getVal('Land Area (Acres)', 'land_area_acres'),
+    route_alignment_km: distance != null && distance !== '' ? `${distance} km` : '',
+    road_crossings: getVal('Road Crossing', 'road_crossing_absence'),
+    railway_crossing_electrified: getVal('Railway Crossing', 'railway_crossing_absence'),
     railway_crossing_nonelectrified: '',
-    high_voltage_transmission_corridors: row.transmission_line_crossing_absence ?? '',
-    existing_linear_infrastructure: row.infrastruture_absence ?? '',
-    terrain: row.terrain_plain ?? '',
-    tahasil: getRowVal(row, 'tahasil_forest', 'tahasil'),
-    village: getRowVal(row, 'village_forest', 'village'),
-    major_river_crossing: row.major_river_crossing_absence ?? '',
-    nallahs_minor_drainage: row.nallahs_minor_drainage_absence ?? '',
-    low_lying_agricultural_waterlogging: row.waterlogging_area_acres_0 != null ? `${row.waterlogging_area_acres_0} acres` : '',
-    elevation_m: row.elevation_1884 ?? '',
-    ground_temperature: row.ground_temperature_20c ?? '',
-    trees_between_route: row.tress_between_gas_pipeline_8 ?? '',
+    high_voltage_transmission_corridors: getVal('Transmission Line Crossing', 'transmission_line_crossing_absence'),
+    existing_linear_infrastructure: getVal('Infrastruture', 'infrastruture_absence'),
+    culvert: getVal('Culvert', 'culvert_absence'),
+    terrain: getVal('Terrain', 'terrain_plain'),
+    tahasil: getVal('Tahasil', 'tahasil_forest', 'tahasil'),
+    village: getVal('Village', 'village_forest', 'village'),
+    major_river_crossing: getVal('Major River Crossing', 'major_river_crossing_absence'),
+    nallahs_minor_drainage: getVal('Nallahs & Minor Drainage', 'nallahs_minor_drainage_absence'),
+    low_lying_agricultural_waterlogging: waterlogging != null && waterlogging !== '' && waterlogging !== '0' ? `${waterlogging} acres` : '',
+    elevation_m: getVal('Elevation', 'elevation_1884'),
+    ground_temperature: getVal('Ground Temperature', 'ground_temperature_20c'),
+    trees_between_route: getVal('Tress Between Gas Pipeline', 'tress_between_gas_pipeline_8'),
     population_density: '',
     safety_exclusion_zones: '',
     risk_category: '',
     risk_level: '',
     flood_prone_zone: (() => {
-      const val = getRowVal(row, 'flood_prone_zone_area_acres_0', 'flood_prone_zone', 'flood_prone_zone_km')
-      if (!val || val === '') return ''
+      if (!floodProne || floodProne === '' || floodProne === '0') return ''
       // If it's a number, add "acres", otherwise return as is
-      const numVal = parseFloat(val)
+      const numVal = parseFloat(floodProne)
       if (!isNaN(numVal) && numVal > 0) {
-        return `${val} acres`
+        return `${floodProne} acres`
       }
-      return val
+      return floodProne
     })(),
     river_name: '',
     length_km: '',
@@ -399,7 +597,8 @@ function DataPanels({ projectData, selectedTowerIndices, selectedSoilPoint, sele
 
   const displayValue = (value) => {
     if (value === undefined || value === null || value === '') return 'Absence'
-    return String(value)
+    // Clean encoding issues before displaying
+    return cleanEncoding(String(value))
   }
 
   // Load DATA_Gas_Pipeline.json for chainage-based panel data
@@ -560,14 +759,12 @@ function DataPanels({ projectData, selectedTowerIndices, selectedSoilPoint, sele
       </div>
       <div className="grid grid-cols-4 gap-1">
       {/* <DataPanel label="Route Alignment" value={detailData.route_alignment_km != null && detailData.route_alignment_km !== '' ? `${(parseFloat(detailData.route_alignment_km) || 0).toFixed(2)} km` : 'Absence'} color="orange" /> */}
-      <DataPanel label="Total Plot No." value={displayValue(detailData.total_plot_no)} color="orange" />
-      <DataPanel label="Land Use" value={displayValue(detailData.land_use)} color="orange" />
-      <DataPanel label="Land Ownership & ROU" value={displayValue(detailData.land_ownership_rou)} color="orange" />
-      <DataPanel label="Road Crossing" value={displayValue(detailData.road_crossings)} color="orange" />
-      {/* <DataPanel label="Railway Crossing" value={displayValue(railwayValue)} color="orange" />
-      <DataPanel label="High-voltage Transmission Corridors" value={displayValue(detailData.high_voltage_transmission_corridors)} color="orange" />
-      <DataPanel label="Existing linear infrastructure in isolated stretches" value={displayValue(detailData.existing_linear_infrastructure)} color="orange" /> */}
-      </div>
+       <DataPanel label="Plot/ Survey No." value={displayValue(detailData.total_plot_no)} color="orange" />
+       <DataPanel label="Land Use" value={displayValue(detailData.land_use)} color="orange" />
+       <DataPanel label="Land Ownership & ROU" value={displayValue(detailData.land_ownership_rou)} color="orange" />
+       <DataPanel label="Land Area (Acres)" value={displayValue(detailData.land_area_acres)} color="orange" />
+       </div>
+      
       <div className="grid grid-cols-4 gap-1">
         {/* <DataPanel label="Land Use" value={displayValue(detailData.land_use)} color="orange" />
         <DataPanel label="Land Ownership & ROU" value={displayValue(detailData.land_ownership_rou)} color="orange" /> */}
@@ -594,11 +791,14 @@ function DataPanels({ projectData, selectedTowerIndices, selectedSoilPoint, sele
 
       {/* SAFETY & REGULATORY SCREENING */}
       <DataPanel label="Safety & Regulatory Screening" header={true} icon={<Layers className="w-3.5 h-3.5 text-red-400" />} />
-      <div className="grid grid-cols-4 gap-1">
-        <DataPanel label="Railway Crossing" value={displayValue(railwayValue)} color="yellow" />
-        <DataPanel label="Transmission Line Crossing" value={displayValue(detailData.high_voltage_transmission_corridors)} color="yellow" />
-        <DataPanel label="Infrastructure" value={displayValue(detailData.existing_linear_infrastructure)} color="yellow" />
-        <DataPanel label="Culvert" value={displayValue(detailData.culvert)} color="yellow" />
+      <div className="grid grid-cols-3 gap-1">
+      <DataPanel label="Road Crossing" value={displayValue(detailData.road_crossings)} color="yellow" />
+      <DataPanel label="Railway Crossing" value={displayValue(railwayValue)} color="yellow" />
+      <DataPanel label="Transmission Line Crossing" value={displayValue(detailData.high_voltage_transmission_corridors)} color="yellow" />
+      </div>
+      <div className="grid grid-cols-2 gap-1">
+      <DataPanel label="Infrastructure" value={displayValue(detailData.existing_linear_infrastructure)} color="yellow" />
+      <DataPanel label="Culvert" value={displayValue(detailData.culvert)} color="yellow" />
       </div>
 
       {/* RISK IDENTIFICATION */}
@@ -619,108 +819,118 @@ function DataPanels({ projectData, selectedTowerIndices, selectedSoilPoint, sele
         const at4 = d.at_4_m_depth
         return (
           <>
-            <DataPanel label="Soil At 1 m Depth" header={true} icon={<Layers className="w-3.5 h-3.5 text-green-400" />} />
+            <DataPanel label="Soil At 1 m Depth" header={true} showLabelText={true} hideIcon={true} />
             <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Dry Density (g/cc)" value={at1.dry_density_gcc ?? 'Absence'} color="green" />
-              <DataPanel label="Clay %" value={at1.clay ?? 'Absence'} color="green" />
-              <DataPanel label="Gravel %" value={at1.gravel ?? 'Absence'} color="green" />
-              <DataPanel label="Sand %" value={at1.sand ?? 'Absence'} color="green" />
+              <DataPanel label="Dry Density (g/cc)" value={at1.dry_density_gcc ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Clay %" value={at1.clay ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Gravel %" value={at1.gravel ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Sand %" value={at1.sand ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
             </div>
             <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Silt %" value={at1.silt ?? 'Absence'} color="green" />
-              <DataPanel label="Moisture %" value={at1.moisture ?? 'Absence'} color="green" />
-              <DataPanel label="Bulk Density (gm/cc)" value={at1.bulk_density_gmcc != null ? Number(at1.bulk_density_gmcc).toFixed(2) : 'Absence'} color="green" />
-              <DataPanel label="Liquid Limit %" value={at1.liquid_limit ?? 'Absence'} color="green" />
+              <DataPanel label="Silt %" value={at1.silt ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Moisture %" value={at1.moisture ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Bulk Density (gm/cc)" value={at1.bulk_density_gmcc != null ? Number(at1.bulk_density_gmcc).toFixed(2) : 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Liquid Limit %" value={at1.liquid_limit ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
             </div>
             <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Plastic Limit %" value={at1.plastic_limit ?? 'Absence'} color="green" />
-              <DataPanel label="Plasticity Index %" value={at1.plasticity_index ?? 'Absence'} color="green" />
-              <DataPanel label="Max Dry Density (gm/cc)" value={at1.max_dry_density_gmcc != null ? Number(at1.max_dry_density_gmcc).toFixed(2) : 'Absence'} color="green" />
-              <DataPanel label="Free Swelling Index %" value={at1.free_swelling_index != null ? Number(at1.free_swelling_index).toFixed(2) : 'Absence'} color="green" />
+              <DataPanel label="Plastic Limit %" value={at1.plastic_limit ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Plasticity Index %" value={at1.plasticity_index ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Max Dry Density (gm/cc)" value={at1.max_dry_density_gmcc != null ? Number(at1.max_dry_density_gmcc).toFixed(2) : 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Free Swelling Index %" value={at1.free_swelling_index != null ? Number(at1.free_swelling_index).toFixed(2) : 'Absence'} color="green" hideIcon={true} showLabelText={true} />
             </div>
             <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="UCS (kg/cm²)" value={at1.ucs_kgcm != null ? Number(at1.ucs_kgcm).toFixed(2) : 'Absence'} color="green" />
-              <DataPanel label="Soil Class" value={at1.soil_class ?? 'Absence'} color="green" />
-              <DataPanel label="Specific Gravity" value={at1.specific_gravity ?? 'Absence'} color="green" />
-              <DataPanel label="Safe Bearing Capacity (SBC)" value={at1.safe_bearing_capacity ?? at1.sbc ?? 'Absence'} color="green" />
+              <DataPanel label="UCS (kg/cm²)" value={at1.ucs_kgcm != null ? Number(at1.ucs_kgcm).toFixed(2) : 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Soil Class" value={at1.soil_class ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Specific Gravity" value={at1.specific_gravity ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Safe Bearing Capacity (SBC)" value={at1.safe_bearing_capacity ?? at1.sbc ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
             </div>
-
-            <DataPanel label="Soil At 2 m Depth" header={true} icon={<Layers className="w-3.5 h-3.5 text-blue-400" />} />
-            <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Dry Density (g/cc)" value={at2.dry_density_gcc ?? 'Absence'} color="blue" />
-              <DataPanel label="Clay %" value={at2.clay ?? 'Absence'} color="blue" />
-              <DataPanel label="Gravel %" value={at2.gravel ?? 'Absence'} color="blue" />
-              <DataPanel label="Sand %" value={at2.sand ?? 'Absence'} color="blue" />
-            </div>
-            <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Silt %" value={at2.silt ?? 'Absence'} color="blue" />
-              <DataPanel label="Moisture %" value={at2.moisture ?? 'Absence'} color="blue" />
-              <DataPanel label="Bulk Density (gm/cc)" value={at2.bulk_density_gmcc != null ? Number(at2.bulk_density_gmcc).toFixed(2) : 'Absence'} color="blue" />
-              <DataPanel label="Liquid Limit %" value={at2.liquid_limit ?? 'Absence'} color="blue" />
-            </div>
-            <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Plastic Limit %" value={at2.plastic_limit ?? 'Absence'} color="blue" />
-              <DataPanel label="Plasticity Index %" value={at2.plasticity_index ?? 'Absence'} color="blue" />
-              <DataPanel label="Max Dry Density (gm/cc)" value={at2.max_dry_density_gmcc != null ? Number(at2.max_dry_density_gmcc).toFixed(2) : 'Absence'} color="blue" />
-              <DataPanel label="Free Swelling Index %" value={at2.free_swelling_index != null ? Number(at2.free_swelling_index).toFixed(2) : 'Absence'} color="blue" />
-            </div>
-            <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="UCS (kg/cm²)" value={at2.ucs_kgcm != null ? Number(at2.ucs_kgcm).toFixed(2) : 'Absence'} color="blue" />
-              <DataPanel label="Soil Class" value={displayValue(at2.soil_class)} color="blue" />
-              <DataPanel label="Specific Gravity" value={displayValue(at2.specific_gravity)} color="blue" />
-              <DataPanel label="Safe Bearing Capacity (SBC)" value={at2.safe_bearing_capacity ?? at2.sbc ?? 'Absence'} color="blue" />
+            <div className="grid grid-cols-1 gap-1">
+              <DataPanel label="CBR (%)" value={at1.cbr_value ?? 'Absence'} color="green" hideIcon={true} showLabelText={true} />
             </div>
 
-            <DataPanel label="Soil At 3 m Depth" header={true} icon={<Layers className="w-3.5 h-3.5 text-purple-400" />} />
+            <DataPanel label="Soil At 2 m Depth" header={true} showLabelText={true} hideIcon={true} />
             <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Dry Density (g/cc)" value={at3.dry_density_gcc ?? 'Absence'} color="purple" />
-              <DataPanel label="Clay %" value={at3.clay ?? 'Absence'} color="purple" />
-              <DataPanel label="Gravel %" value={at3.gravel ?? 'Absence'} color="purple" />
-              <DataPanel label="Sand %" value={at3.sand ?? 'Absence'} color="purple" />
+              <DataPanel label="Dry Density (g/cc)" value={at2.dry_density_gcc ?? 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Clay %" value={at2.clay ?? 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Gravel %" value={at2.gravel ?? 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Sand %" value={at2.sand ?? 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
             </div>
             <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Silt %" value={at3.silt ?? 'Absence'} color="purple" />
-              <DataPanel label="Moisture %" value={at3.moisture ?? 'Absence'} color="purple" />
-              <DataPanel label="Bulk Density (gm/cc)" value={at3.bulk_density_gmcc != null ? Number(at3.bulk_density_gmcc).toFixed(2) : 'Absence'} color="purple" />
-              <DataPanel label="Liquid Limit %" value={at3.liquid_limit ?? 'Absence'} color="purple" />
+              <DataPanel label="Silt %" value={at2.silt ?? 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Moisture %" value={at2.moisture ?? 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Bulk Density (gm/cc)" value={at2.bulk_density_gmcc != null ? Number(at2.bulk_density_gmcc).toFixed(2) : 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Liquid Limit %" value={at2.liquid_limit ?? 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
             </div>
             <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Plastic Limit %" value={at3.plastic_limit ?? 'Absence'} color="purple" />
-              <DataPanel label="Plasticity Index %" value={at3.plasticity_index ?? 'Absence'} color="purple" />
-              <DataPanel label="Max Dry Density (gm/cc)" value={at3.max_dry_density_gmcc != null ? Number(at3.max_dry_density_gmcc).toFixed(2) : 'Absence'} color="purple" />
-              <DataPanel label="Free Swelling Index %" value={at3.free_swelling_index != null ? Number(at3.free_swelling_index).toFixed(2) : 'Absence'} color="purple" />
+              <DataPanel label="Plastic Limit %" value={at2.plastic_limit ?? 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Plasticity Index %" value={at2.plasticity_index ?? 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Max Dry Density (gm/cc)" value={at2.max_dry_density_gmcc != null ? Number(at2.max_dry_density_gmcc).toFixed(2) : 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Free Swelling Index %" value={at2.free_swelling_index != null ? Number(at2.free_swelling_index).toFixed(2) : 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
             </div>
             <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="UCS (kg/cm²)" value={at3.ucs_kgcm != null ? Number(at3.ucs_kgcm).toFixed(2) : 'Absence'} color="purple" />
-              <DataPanel label="Soil Class" value={displayValue(at3.soil_class)} color="purple" />
-              <DataPanel label="Specific Gravity" value={displayValue(at3.specific_gravity)} color="purple" />
-              <DataPanel label="Safe Bearing Capacity (SBC)" value={at3.safe_bearing_capacity ?? at3.sbc ?? 'Absence'} color="purple" />
+              <DataPanel label="UCS (kg/cm²)" value={at2.ucs_kgcm != null ? Number(at2.ucs_kgcm).toFixed(2) : 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Soil Class" value={displayValue(at2.soil_class)} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Specific Gravity" value={displayValue(at2.specific_gravity)} color="blue" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Safe Bearing Capacity (SBC)" value={at2.safe_bearing_capacity ?? at2.sbc ?? 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
             </div>
-
-            <DataPanel label="Soil At 4 m Depth" header={true} icon={<Layers className="w-3.5 h-3.5 text-purple-400" />} />
-            <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Dry Density (g/cc)" value={at4.dry_density_gcc ?? 'Absence'} color="purple" />
-              <DataPanel label="Clay %" value={at4.clay ?? 'Absence'} color="purple" />
-              <DataPanel label="Gravel %" value={at4.gravel ?? 'Absence'} color="purple" />
-              <DataPanel label="Sand %" value={at4.sand ?? 'Absence'} color="purple" />
+            <div className="grid grid-cols-1 gap-1">
+              <DataPanel label="CBR (%)" value={at2.cbr_value ?? 'Absence'} color="blue" hideIcon={true} showLabelText={true} />
             </div>
+            <DataPanel label="Soil At 3 m Depth" header={true} showLabelText={true} hideIcon={true} />
             <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Silt %" value={at4.silt ?? 'Absence'} color="purple" />
-              <DataPanel label="Moisture %" value={at4.moisture ?? 'Absence'} color="purple" />
-              <DataPanel label="Bulk Density (gm/cc)" value={at4.bulk_density_gmcc != null ? Number(at4.bulk_density_gmcc).toFixed(2) : 'Absence'} color="purple" />
-              <DataPanel label="Liquid Limit %" value={at4.liquid_limit ?? 'Absence'} color="purple" />
+              <DataPanel label="Dry Density (g/cc)" value={at3.dry_density_gcc ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Clay %" value={at3.clay ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Gravel %" value={at3.gravel ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Sand %" value={at3.sand ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
             </div>
             <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="Plastic Limit %" value={at4.plastic_limit ?? 'Absence'} color="purple" />
-              <DataPanel label="Plasticity Index %" value={at4.plasticity_index ?? 'Absence'} color="purple" />
-              <DataPanel label="Max Dry Density (gm/cc)" value={at4.max_dry_density_gmcc != null ? Number(at4.max_dry_density_gmcc).toFixed(2) : 'Absence'} color="purple" />
-              <DataPanel label="Free Swelling Index %" value={at4.free_swelling_index != null ? Number(at4.free_swelling_index).toFixed(2) : 'Absence'} color="purple" />
+              <DataPanel label="Silt %" value={at3.silt ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Moisture %" value={at3.moisture ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Bulk Density (gm/cc)" value={at3.bulk_density_gmcc != null ? Number(at3.bulk_density_gmcc).toFixed(2) : 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Liquid Limit %" value={at3.liquid_limit ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
             </div>
             <div className="grid grid-cols-4 gap-1">
-              <DataPanel label="UCS (kg/cm²)" value={at4.ucs_kgcm != null ? Number(at4.ucs_kgcm).toFixed(2) : 'Absence'} color="purple" />
-              <DataPanel label="Soil Class" value={displayValue(at4.soil_class)} color="purple" />
-              <DataPanel label="Specific Gravity" value={displayValue(at4.specific_gravity)} color="purple" />
-              <DataPanel label="Safe Bearing Capacity (SBC)" value={at4.safe_bearing_capacity ?? at4.sbc ?? 'Absence'} color="purple" />
+              <DataPanel label="Plastic Limit %" value={at3.plastic_limit ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Plasticity Index %" value={at3.plasticity_index ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Max Dry Density (gm/cc)" value={at3.max_dry_density_gmcc != null ? Number(at3.max_dry_density_gmcc).toFixed(2) : 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Free Swelling Index %" value={at3.free_swelling_index != null ? Number(at3.free_swelling_index).toFixed(2) : 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+            </div>
+            <div className="grid grid-cols-4 gap-1">
+              <DataPanel label="UCS (kg/cm²)" value={at3.ucs_kgcm != null ? Number(at3.ucs_kgcm).toFixed(2) : 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Soil Class" value={displayValue(at3.soil_class)} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Specific Gravity" value={displayValue(at3.specific_gravity)} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Safe Bearing Capacity (SBC)" value={at3.safe_bearing_capacity ?? at3.sbc ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+            </div>
+            <div className="grid grid-cols-1 gap-1">
+              <DataPanel label="CBR (%)" value={at3.cbr_value ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+            </div>
+            <DataPanel label="Soil At 4 m Depth" header={true} showLabelText={true} hideIcon={true} />
+            <div className="grid grid-cols-4 gap-1">
+              <DataPanel label="Dry Density (g/cc)" value={at4.dry_density_gcc ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Clay %" value={at4.clay ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Gravel %" value={at4.gravel ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Sand %" value={at4.sand ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+            </div>
+            <div className="grid grid-cols-4 gap-1">
+              <DataPanel label="Silt %" value={at4.silt ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Moisture %" value={at4.moisture ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Bulk Density (gm/cc)" value={at4.bulk_density_gmcc != null ? Number(at4.bulk_density_gmcc).toFixed(2) : 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Liquid Limit %" value={at4.liquid_limit ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+            </div>
+            <div className="grid grid-cols-4 gap-1">
+              <DataPanel label="Plastic Limit %" value={at4.plastic_limit ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Plasticity Index %" value={at4.plasticity_index ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Max Dry Density (gm/cc)" value={at4.max_dry_density_gmcc != null ? Number(at4.max_dry_density_gmcc).toFixed(2) : 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Free Swelling Index %" value={at4.free_swelling_index != null ? Number(at4.free_swelling_index).toFixed(2) : 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+            </div>
+            <div className="grid grid-cols-4 gap-1">
+              <DataPanel label="UCS (kg/cm²)" value={at4.ucs_kgcm != null ? Number(at4.ucs_kgcm).toFixed(2) : 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Soil Class" value={displayValue(at4.soil_class)} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Specific Gravity" value={displayValue(at4.specific_gravity)} color="purple" hideIcon={true} showLabelText={true} />
+              <DataPanel label="Safe Bearing Capacity (SBC)" value={at4.safe_bearing_capacity ?? at4.sbc ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
+            </div>
+            <div className="grid grid-cols-1 gap-1">
+              <DataPanel label="CBR (%)" value={at4.cbr_value ?? 'Absence'} color="purple" hideIcon={true} showLabelText={true} />
             </div>
           </>
         )
