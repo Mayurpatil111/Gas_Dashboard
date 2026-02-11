@@ -1238,7 +1238,7 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
           onClick={() => setShowElevationGraph(true)}
           className="px-3 py-2 bg-gray-900/90 text-xs text-white rounded-lg shadow-lg border border-green-400 hover:bg-gray-800 transition"
         >
-          Elevation Graph
+          Elevation Profile
         </button>
         
         {kmlFileName && (
