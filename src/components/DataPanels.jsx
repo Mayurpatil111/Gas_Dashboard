@@ -527,6 +527,7 @@ function gasRowToDetailData(row) {
   }
   
   const distance = getVal('Distance', 'distance_0')
+  const pipelineRoadLength = getVal('Pipeline Length/ Road Length', 'Pipeline Length/ Road Length')
   const waterlogging = getVal('Waterlogging Area (Acres)', 'waterlogging_area_acres_0')
   const floodProne = getVal('Flood Prone Zone Area (Acres)', 'flood_prone_zone_area_acres_0', 'flood_prone_zone', 'flood_prone_zone_km')
   const forestLen = getVal('Pipeline Beetween Forest', 'pipeline_beetween_forest')
@@ -540,6 +541,7 @@ function gasRowToDetailData(row) {
     total_plot_no: `Sr. No ${getVal('Plot/ Survey No.', 'Total Plot No', 'total_plot_no_absence')}`,
     land_area_acres: getVal('Land Area (Acres)', 'land_area_acres'),
     route_alignment_km: distance != null && distance !== '' ? `${distance} km` : '',
+    pipeline_length_road_length_km: pipelineRoadLength != null && pipelineRoadLength !== '' ? `${pipelineRoadLength}` : '',
     road_crossings: getVal('Road Crossing', 'road_crossing_absence'),
     railway_crossing_electrified: getVal('Railway Crossing', 'railway_crossing_absence'),
     railway_crossing_nonelectrified: '',
@@ -555,8 +557,9 @@ function gasRowToDetailData(row) {
     elevation_m: getVal('Elevation', 'elevation_1884'),
     ground_temperature: getVal('Ground Temperature', 'ground_temperature_20c'),
     trees_between_route: getVal('Tress Between Gas Pipeline', 'tress_between_gas_pipeline_8'),
-    forest_area_length_km: forestLen,
-    farm_area_length_km: farmLen,
+    total_trees_between_route: getVal('Trees Interfering Pipeline', 'Trees Interfering Pipeline'),
+    forest_area_length_km: forestLen != null && forestLen !== '' ? `${forestLen} ` : '',
+    farm_area_length_km: farmLen != null && farmLen !== '' ? `${farmLen} ` : '',
     population_density: '',
     safety_exclusion_zones: '',
     risk_category: '',
@@ -758,8 +761,8 @@ function DataPanels({ projectData, selectedTowerIndices, selectedSoilPoint, sele
      <DataPanel label="Summary" header={true} icon={<Layers className="w-3.5 h-3.5 text-amber-400" />} />
 
       <div className="grid grid-cols-4 gap-1">
-      <DataPanel label="Trees Between Route" value={displayValue(detailData.trees_between_route)} color="purple" />
-      <DataPanel label="Road/Pipeline Length" value={displayValue(detailData.route_alignment_km)} color="purple" />
+      <DataPanel label="Total Trees Between Route" value={displayValue(detailData.total_trees_between_route)} color="purple" />
+      <DataPanel label="Road/Pipeline Length" value={displayValue(detailData.pipeline_length_road_length_km)} color="purple" />
       <DataPanel label="Pipeline Beetween Forest" value={displayValue(detailData.forest_area_length_km)} color="purple" />
       <DataPanel label="Pipeline Between Farms" value={displayValue(detailData.farm_area_length_km)} color="purple" />
       </div>
