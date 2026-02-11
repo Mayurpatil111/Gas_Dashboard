@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
-import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap, GeoJSON } from 'react-leaflet'
+import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap, GeoJSON, Circle } from 'react-leaflet'
 import L from 'leaflet'
 import toGeoJSON from '@mapbox/togeojson'
 import { Upload, X } from 'lucide-react'
@@ -121,9 +121,12 @@ function FitMultipleSegments({ segments }) {
   return null
 }
 
-// Get chainage value from a DATA_Gas_Pipeline row (key like chainage_228579000000001)
+// Get chainage value from a DATA_Gas_Pipeline row
 function getChainageFromGasRow(row) {
   if (!row || typeof row !== 'object') return null
+  // Try direct field name first (new CSV format)
+  if (row['Chainage'] != null) return row['Chainage']
+  // Fallback to old format (key like chainage_228579000000001)
   const key = Object.keys(row).find((k) => k.toLowerCase().startsWith('chainage_'))
   return key ? row[key] : null
 }
@@ -131,27 +134,34 @@ function getChainageFromGasRow(row) {
 // Get flood prone zone value from a DATA_Gas_Pipeline row
 function getFloodProneZoneFromGasRow(row) {
   if (!row || typeof row !== 'object') return null
-  // Try different possible field names
-  const val = row.flood_prone_zone_area_acres_0 || 
+  // Try different possible field names (new CSV format first)
+  const val = row['Flood Prone Zone Area (Acres)'] ||
+              row.flood_prone_zone_area_acres_0 || 
               row.flood_prone_zone || 
               row.flood_prone_zone_km ||
               null
-  return val != null && val !== '' ? String(val) : null
+  return val != null && val !== '' && val !== '0' && val !== 'NA' ? String(val) : null
 }
 
 // Get start/end [lat, lng] from a DATA_Gas_Pipeline row
 function getStartEndFromGasRow(row) {
   if (!row || typeof row !== 'object') return null
-  const getVal = (prefix) => {
+  const getVal = (fieldName, prefix) => {
+    // Try direct field name first (new CSV format)
+    if (row[fieldName] != null) {
+      const n = parseFloat(row[fieldName])
+      if (!Number.isNaN(n)) return n
+    }
+    // Fallback to old format (key starting with prefix)
     const key = Object.keys(row).find((k) => k.toLowerCase().startsWith(prefix))
     const v = key ? row[key] : null
     const n = v != null ? parseFloat(v) : NaN
     return Number.isNaN(n) ? null : n
   }
-  const startLat = getVal('start_latitude')
-  const startLng = getVal('start_longitude')
-  const endLat = getVal('end_latitude')
-  const endLng = getVal('end_longitude')
+  const startLat = getVal('Start Latitude', 'start_latitude')
+  const startLng = getVal('Start Longitude', 'start_longitude')
+  const endLat = getVal('End Latitude', 'end_latitude')
+  const endLng = getVal('End Longitude', 'end_longitude')
   if (startLat == null || startLng == null || endLat == null || endLng == null) return null
   return { start: [startLat, startLng], end: [endLat, endLng] }
 }
@@ -215,9 +225,42 @@ function parseDMSLocation(str) {
 // Visualize soil profile as a stacked area chart (depth on X, % on Y)
 function SoilProfile({ raw }) {
   const depths = ['1 m', '2 m', '3 m', '4 m']
-  const xLabels = ['Clay', 'Gravel', 'Sand', 'Silt']
-  const isNewFormat = raw && (raw.clay != null || raw.at_1_m_depth_dry_density_g_cc != null)
-  const layers = isNewFormat
+  const xLabels = ['', '', '', '']
+  const hasNewCsvFormat =
+    raw &&
+    (raw['At 1 m Depth - Clay %'] != null ||
+      raw['At 1 m Depth - Dry Density (g/cc)'] != null)
+  const hasNormalizedFormat =
+    raw && (raw.clay != null || raw.at_1_m_depth_dry_density_g_cc != null)
+
+  const layers = hasNewCsvFormat
+    ? [
+        {
+          clay: 'At 1 m Depth - Clay %',
+          gravel: 'At 1 m Depth - Gravel %',
+          sand: 'At 1 m Depth - Sand %',
+          silt: 'At 1 m Depth - Silt %',
+        },
+        {
+          clay: 'At 2 m Depth - Clay %',
+          gravel: 'At 2 m Depth - Gravel %',
+          sand: 'At 2 m Depth - Sand %',
+          silt: 'At 2 m Depth - Silt %',
+        },
+        {
+          clay: 'At 3 m Depth - Clay %',
+          gravel: 'At 3 m Depth - Gravel %',
+          sand: 'At 3 m Depth - Sand %',
+          silt: 'At 3 m Depth - Silt %',
+        },
+        {
+          clay: 'At 4 m Depth - Clay %',
+          gravel: 'At 4 m Depth - Gravel %',
+          sand: 'At 4 m Depth - Sand %',
+          silt: 'At 4 m Depth - Silt %',
+        },
+      ]
+    : hasNormalizedFormat
     ? [
         { clay: 'clay', gravel: 'gravel', sand: 'sand', silt: 'silt' },
         { clay: 'clay_1', gravel: 'gravel_1', sand: 'sand_1', silt: 'silt_1' },
@@ -258,118 +301,91 @@ function SoilProfile({ raw }) {
   const paddingX = 23
   const paddingY = 20
 
-  const xs = depths.map((_, i) =>
-    paddingX + ((width - 2 * paddingX) * i) / (depths.length - 1 || 1),
+  // Depth positions on Y-axis (1 m, 2 m, 3 m, 4 m)
+  const ys = depths.map((_, i) =>
+    paddingY + ((height - 2 * paddingY) * i) / (depths.length - 1 || 1),
   )
-  const yFromPct = (pct) =>
-    height - paddingY - ((height - 2 * paddingY) * pct) / 100
 
-  const buildPath = (seriesKey) => {
-    const upper = []
-    const lower = []
-    let prevTotals = Array(depthValues.length).fill(0)
+  // Horizontal scale: 0–100% → X
+  const xFromPct = (pct) =>
+    paddingX + ((width - 2 * paddingX) * pct) / 100
 
-    // Compute cumulative stacks at each depth for this and previous series
-    depthValues.forEach((vals, i) => {
-      const value = vals[seriesKey] || 0
-      const low = prevTotals[i]
-      const high = low + value
-      lower.push({ x: xs[i], y: yFromPct(low) })
-      upper.push({ x: xs[i], y: yFromPct(high) })
-      prevTotals[i] = high
-    })
-
-    const points = []
-    upper.forEach((p) => points.push(p))
-    for (let i = lower.length - 1; i >= 0; i -= 1) {
-      points.push(lower[i])
-    }
-
-    if (points.length === 0) return ''
-
-    return (
-      'M ' +
-      points
-        .map((p, idx) => `${idx === 0 ? '' : 'L '}${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
-        .join(' ') +
-      ' Z'
-    )
-  }
-
-  // Cumulative stacks shared across series
+  // Cumulative stacks shared across series (horizontal stacking)
   const cumulative = Array(depthValues.length).fill(0)
+
   const seriesPaths = seriesDefs.map((s) => {
-    const upper = []
-    const lower = []
+    const right = []
+    const left = []
+
     depthValues.forEach((vals, i) => {
       const value = vals[s.key] || 0
       const low = cumulative[i]
       const high = low + value
-      lower.push({ x: xs[i], y: yFromPct(low) })
-      upper.push({ x: xs[i], y: yFromPct(high) })
+
+      left.push({ x: xFromPct(low), y: ys[i] })
+      right.push({ x: xFromPct(high), y: ys[i] })
+
       cumulative[i] = high
     })
+
     const points = []
-    upper.forEach((p) => points.push(p))
-    for (let i = lower.length - 1; i >= 0; i -= 1) {
-      points.push(lower[i])
+    right.forEach((p) => points.push(p))
+    for (let i = left.length - 1; i >= 0; i -= 1) {
+      points.push(left[i])
     }
+
     const d =
       points.length === 0
         ? ''
         : 'M ' +
           points
-            .map((p, idx) => `${idx === 0 ? '' : 'L '}${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
+            .map((p, idx) =>
+              `${idx === 0 ? '' : 'L '}${p.x.toFixed(1)} ${p.y.toFixed(1)}`,
+            )
             .join(' ') +
           ' Z'
+
     return { def: s, d }
   })
 
   return (
     <div className="mt-3 text-[15px] text-gray-800 text-center  font-bold">
-      <div className="font-semibold mb-1">Soil profile – percent area (1–4 m)</div>
+      <div className="font-semibold mb-1 flex items-center justify-center gap-2">
+        <span className="text-gray-800">→</span>
+        <div className="flex-1 h-px bg-gray-800"></div>
+        <span>10 m</span>
+        <div className="flex-1 h-px bg-gray-800"></div>
+        <span className="text-gray-800">←</span>
+      </div>
+      {/* Color legend */}
+      <div className="flex items-center justify-center gap-4 mb-2 text-xs">
+        {seriesDefs.map((series) => (
+          <div key={series.key} className="flex items-center gap-1.5">
+            <div
+              className="w-4 h-4 rounded"
+              style={{ backgroundColor: series.color, opacity: 0.7 }}
+            ></div>
+            <span className="text-gray-800 font-semibold">{series.label}</span>
+          </div>
+        ))}
+      </div>
       <svg width={width} height={height} className="border border-gray-300 rounded bg-white">
-        {/* Background bands with component labels instead of raw percentages */}
-        {[
-          { minPct: 75, maxPct: 100, label: '1 m', bg: '#f9fafb' },
-          { minPct: 50, maxPct: 75, label: '2 m', bg: '#f3f4f6' },
-          { minPct: 25, maxPct: 50, label: '3 m', bg: '#e5e7eb' },
-          { minPct: 0, maxPct: 25, label: '4 m',  bg: '#d1d5db' },
-        ].map(({ minPct, maxPct, label, bg }) => {
-          const yTop = yFromPct(maxPct)
-          const yBottom = yFromPct(minPct)
-          const midY = (yTop + yBottom) / 2
-          return (
-            <g key={label}>
-              <rect
-                x={paddingX}
-                y={yTop}
-                width={width - 2 * paddingX}
-                height={yBottom - yTop}
-                fill={bg}
-                fillOpacity="0.7"
-              />
-              <line
-                x1={paddingX}
-                x2={width - 1 * paddingX}
-                y1={yTop}
-                y2={yTop}
-                stroke="#111827"
-                strokeWidth="1.5"
-              />
-              <text
-                x={4}
-                y={midY + 3}
-                fontSize="9"
-                fill="#6b7280"
-              >
-                {label}
-              </text>
-            </g>
-          )
-        })}
+        {/* Depth labels on Y-axis (1 m, 2 m, 3 m, 4 m) */}
+        {depths.map((depth, i) => (
+          <text
+            key={depth}
+            x={5}
+            y={ys[i]}
+            fontSize="11"
+            fill="#111827"
+            fontWeight="600"
+            dominantBaseline="middle"
+          >
+            {depth}
+          </text>
+        ))}
 
-        {/* Stacked area series */}
+        {/* Stacked horizontal series */}
         {seriesPaths.map(
           (s) =>
             s.d && (
@@ -384,34 +400,44 @@ function SoilProfile({ raw }) {
             ),
         )}
 
-        {/* X-axis labels for components */}
-        {xLabels.map((label, i) => (
-          <text
-            key={label}
-            x={xs[i]}
-            y={height - 10}
-            fontSize="11"
-            fill="#111827"
-            fontWeight="600"
-            textAnchor="middle"
-          >
-            {label}
-          </text>
-        ))}
-      </svg>
+        {/* Percentage labels for each component at each depth */}
+        {seriesDefs.map((seriesDef, seriesIdx) => {
+          const cumulativeLabels = Array(depthValues.length).fill(0)
 
-      {/* Simple legend */}
-      <div className="mt-1 grid grid-cols-4 gap-x-2 gap-y-0.5 text-[9px] text-gray-700">
-        {seriesDefs.map((s) => (
-          <div key={s.key} className="flex items-center gap-1">
-            <span
-              className="inline-block w-3 h-2 rounded-sm"
-              style={{ backgroundColor: s.color }}
-            />  
-            <span className="text-center text-xs font-bold">{s.label}</span>
-          </div>
-        ))}
-      </div>
+          for (let prevIdx = 0; prevIdx < seriesIdx; prevIdx++) {
+            depthValues.forEach((vals, depthIdx) => {
+              cumulativeLabels[depthIdx] += vals[seriesDefs[prevIdx].key] || 0
+            })
+          }
+
+          return depthValues.map((vals, depthIdx) => {
+            const value = vals[seriesDef.key] || 0
+            if (value < 2) return null
+
+            const low = cumulativeLabels[depthIdx]
+            const high = low + value
+
+            const midX = xFromPct((low + high) / 2)
+            const y = ys[depthIdx]
+
+            return (
+              <text
+                key={`${seriesDef.key}-${depthIdx}`}
+                x={midX}
+                y={y}
+                fontSize="9"
+                fill="#1f2937"
+                fontWeight="600"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                style={{ pointerEvents: 'none' }}
+              >
+                {value.toFixed(1)}%
+              </text>
+            )
+          })
+        })}
+      </svg>
     </div>
   )
 }
@@ -497,6 +523,295 @@ function MapControls({ baseLayer, onBaseLayerChange }) {
   )
 }
 
+// Modal to display detailed Chainage vs Ground Elevation line graph using SVG
+function ElevationGraphModal({ points, onClose }) {
+  const [selectedPoint, setSelectedPoint] = useState(null)
+
+  if (!points || points.length === 0) return null
+
+  // Build numeric arrays
+  const numeric = points
+    .map((p) => {
+      const ch = parseFloat(p.chainage)
+      const el = parseFloat(p.elevation)
+      return {
+        chainage: ch,
+        elevation: el,
+      }
+    })
+    .filter((p) => !Number.isNaN(p.chainage) && !Number.isNaN(p.elevation))
+    .sort((a, b) => a.chainage - b.chainage)
+
+  if (numeric.length === 0) return null
+
+  const minX = numeric[0].chainage
+  const maxX = numeric[numeric.length - 1].chainage
+  const minY = Math.min(...numeric.map((p) => p.elevation))
+  const maxY = Math.max(...numeric.map((p) => p.elevation))
+
+  const avgY =
+    numeric.reduce((sum, p) => sum + p.elevation, 0) / numeric.length
+
+  // Width scales with number of points so each chainage is spread out horizontally.
+  // This, combined with overflow-x-auto on the container, creates a horizontal scrollbar
+  // so you can scroll through all chainages clearly.
+  const width = Math.max(800, numeric.length * 40)
+  const height = 250
+  const paddingLeft = 60
+  const paddingRight = 20
+  const paddingTop = 20
+  const paddingBottom = 40
+
+  const xScale = (x) => {
+    if (maxX === minX) return paddingLeft
+    return (
+      paddingLeft +
+      ((x - minX) / (maxX - minX)) * (width - paddingLeft - paddingRight)
+    )
+  }
+
+  const yScale = (y) => {
+    if (maxY === minY) return height - paddingBottom
+    // Invert for SVG (0 at top)
+    return (
+      paddingTop +
+      ((maxY - y) / (maxY - minY)) * (height - paddingTop - paddingBottom)
+    )
+  }
+
+  const linePoints = numeric.map((p) => `${xScale(p.chainage)},${yScale(p.elevation)}`).join(' ')
+
+  return (
+    <div
+      className="fixed inset-0 z-[9999] bg-black/70 flex items-center"
+      onClick={onClose}
+    >
+      <div
+        className="absolute left-6 bg-gray-900 border border-gray-700 rounded-xl p-4 shadow-2xl max-w-5xl w-[90%] max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-bold text-white">
+            Ground Elevation Profile
+          </h3>
+          <button
+            onClick={onClose}
+            className="px-2 py-1 text-xs rounded bg-gray-800 text-gray-200 hover:bg-gray-700"
+          >
+            Close
+          </button>
+        </div>
+        <div className="text-xs text-gray-400 mb-2 flex flex-wrap gap-4">
+          <span>X-axis: Chainage</span>
+          <span>Y-axis: Ground Elevation (m)</span>
+          <span>
+            Min Elev: <span className="text-gray-100">{minY.toFixed(1)} m</span>
+          </span>
+          <span>
+            Max Elev: <span className="text-gray-100">{maxY.toFixed(1)} m</span>
+          </span>
+          <span>
+            Avg Elev: <span className="text-gray-100">{avgY.toFixed(1)} m</span>
+          </span>
+          {/* <span>
+            Points: <span className="text-gray-100">{numeric.length}</span>
+          </span> */}
+        </div>
+        <div className="overflow-x-auto">
+          <svg 
+            width={width} 
+            height={height} 
+            className="bg-gray-950 rounded-lg"
+            onClick={(e) => {
+              // Close popup if clicking on SVG background (not on a point)
+              if (e.target.tagName === 'svg' || e.target.tagName === 'polyline') {
+                setSelectedPoint(null)
+              }
+            }}
+          >
+            {/* Axes */}
+            {/* X axis */}
+            <line
+              x1={paddingLeft}
+              y1={height - paddingBottom}
+              x2={width - paddingRight}
+              y2={height - paddingBottom}
+              stroke="#9ca3af"
+              strokeWidth="1"
+            />
+            {/* Y axis */}
+            <line
+              x1={paddingLeft}
+              y1={paddingTop}
+              x2={paddingLeft}
+              y2={height - paddingBottom}
+              stroke="#9ca3af"
+              strokeWidth="1"
+            />
+
+            {/* Vertical grid lines & X axis labels – one tick for EVERY chainage */}
+            {numeric.map((p, idx) => {
+              const xPos = xScale(p.chainage)
+              const label = p.chainage.toFixed(3)
+              return (
+                <g key={`xtick-${idx}`}>
+                  {/* Grid line */}
+                  <line
+                    x1={xPos}
+                    y1={paddingTop}
+                    x2={xPos}
+                    y2={height - paddingBottom}
+                    stroke="#4b5563"
+                    strokeWidth="0.5"
+                    strokeDasharray="2,4"
+                  />
+                  {/* Tick */}
+                  <line
+                    x1={xPos}
+                    y1={height - paddingBottom}
+                    x2={xPos}
+                    y2={height - paddingBottom + 4}
+                    stroke="#9ca3af"
+                    strokeWidth="1"
+                  />
+                  {/* Label */}
+                  <text
+                    x={xPos}
+                    y={height - paddingBottom + 16}
+                    fill="#d1d5db"
+                    fontSize="9"
+                    textAnchor="middle"
+                  >
+                    {label}
+                  </text>
+                </g>
+              )
+            })}
+
+            {/* Horizontal grid lines & Y axis labels (min, mid, max) */}
+            {[
+              { y: minY, label: minY.toFixed(1) },
+              { y: (minY + maxY) / 2, label: ((minY + maxY) / 2).toFixed(1) },
+              { y: maxY, label: maxY.toFixed(1) },
+            ].map((tick, idx) => (
+              <g key={`xtick-${idx}`}>
+                {/* Grid line */}
+                <line
+                  x1={paddingLeft}
+                  y1={yScale(tick.y)}
+                  x2={width - paddingRight}
+                  y2={yScale(tick.y)}
+                  stroke="#4b5563"
+                  strokeWidth="0.5"
+                  strokeDasharray="2,4"
+                />
+                {/* Tick */}
+                <line
+                  x1={paddingLeft - 4}
+                  y1={yScale(tick.y)}
+                  x2={paddingLeft}
+                  y2={yScale(tick.y)}
+                  stroke="#9ca3af"
+                  strokeWidth="1"
+                />
+                <text
+                  x={paddingLeft - 8}
+                  y={yScale(tick.y) + 3}
+                  fill="#d1d5db"
+                  fontSize="10"
+                  textAnchor="end"
+                >
+                  {tick.label}
+                </text>
+              </g>
+            ))}
+
+            {/* Line plot */}
+            <polyline
+              fill="none"
+              stroke="#22c55e"
+              strokeWidth="2"
+              points={linePoints}
+            />
+
+            {/* Points */}
+            {numeric.map((p, idx) => {
+              const cx = xScale(p.chainage)
+              const cy = yScale(p.elevation)
+              const isSelected = selectedPoint && selectedPoint.chainage === p.chainage
+              
+              // Position popup above the point, adjust if too close to edges
+              const popupWidth = 130
+              const popupHeight = 40
+              let popupX = cx - popupWidth / 2
+              let popupY = cy - popupHeight - 10
+              
+              // Keep popup within bounds
+              if (popupX < paddingLeft) popupX = paddingLeft + 5
+              if (popupX + popupWidth > width - paddingRight) popupX = width - paddingRight - popupWidth - 5
+              if (popupY < paddingTop) popupY = cy + 15 // Show below if no space above
+              
+              return (
+                <g key={`pt-${idx}`}>
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={isSelected ? 6 : 4}
+                    fill={isSelected ? "#10b981" : "#22c55e"}
+                    stroke="#ffffff"
+                    strokeWidth={isSelected ? "2" : "1"}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedPoint(isSelected ? null : { ...p, cx, cy })
+                    }}
+                  />
+                  {/* Popup for selected point */}
+                  {isSelected && (
+                    <g>
+                      <rect
+                        x={popupX}
+                        y={popupY}
+                        width={popupWidth}
+                        height={popupHeight}
+                        fill="#1f2937"
+                        stroke="#22c55e"
+                        strokeWidth="2"
+                        rx="4"
+                        opacity="0.95"
+                      />
+                      <text
+                        x={popupX + popupWidth / 2}
+                        y={popupY + 18}
+                        fill="#ffffff"
+                        fontSize="10"
+                        fontWeight="600"
+                        textAnchor="middle"
+                      >
+                        Chainage: {p.chainage.toFixed(3)}
+                      </text>
+                      <text
+                        x={popupX + popupWidth / 2}
+                        y={popupY + 33}
+                        fill="#22c55e"
+                        fontSize="10"
+                        fontWeight="600"
+                        textAnchor="middle"
+                      >
+                        Elevation: {p.elevation.toFixed(2)} m
+                      </text>
+                    </g>
+                  )}
+                </g>
+              )
+            })}
+          </svg>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selectedSoilPoint, setSelectedSoilPoint }) {
   const [baseLayer, setBaseLayer] = useState('terrain')
   const [kmlData, setKmlData] = useState(null)
@@ -514,6 +829,7 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
   const [gasPipelineRows, setGasPipelineRows] = useState([])
   const [chainageSegment, setChainageSegment] = useState(null) // { start: [lat,lng], end: [lat,lng] } when a chainage is selected
   const [floodProneZoneSegments, setFloodProneZoneSegments] = useState([]) // Array of segments for flood prone zone filter
+  const [showElevationGraph, setShowElevationGraph] = useState(false)
 
   // Load DATA_Gas_Pipeline.json for chainage segment (start→end line)
   useEffect(() => {
@@ -540,18 +856,26 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
     return gasPipelineRows.filter((row) => {
       const rowFloodProneZone = getFloodProneZoneFromGasRow(row)
       if (rowFloodProneZone == null) return false
+
+      // Special option: show ALL rows that have any valid flood-prone value
+      if (filters.floodProneZone === 'ALL_FLOOD_ZONES') {
+        return true
+      }
+
+      // Normal case: match exact value
       return String(rowFloodProneZone) === String(filters.floodProneZone)
     })
   })()
 
   // When chainage is selected, find matching row and set segment for start→end line
+  // Note: Search in all gasPipelineRows, not filteredGasPipelineRows, so chainage selection works regardless of flood zone filter
   useEffect(() => {
-    if (!filters?.chainage || filters.chainage === 'All' || filteredGasPipelineRows.length === 0) {
+    if (!filters?.chainage || filters.chainage === 'All' || gasPipelineRows.length === 0) {
       setChainageSegment(null)
       return
     }
     const chainageNum = parseFloat(filters.chainage)
-    let match = filteredGasPipelineRows.find((row) => {
+    let match = gasPipelineRows.find((row) => {
       const rowChainage = getChainageFromGasRow(row)
       if (rowChainage == null) return false
       const rowNum = parseFloat(rowChainage)
@@ -559,7 +883,7 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
       return Math.abs(chainageNum - rowNum) < 0.001
     })
     if (!match && !Number.isNaN(chainageNum)) {
-      const withNum = filteredGasPipelineRows
+      const withNum = gasPipelineRows
         .map((row) => ({ row, chainage: getChainageFromGasRow(row) }))
         .filter((x) => x.chainage != null)
         .map((x) => ({ ...x, num: parseFloat(x.chainage) }))
@@ -572,8 +896,13 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
       }
     }
     const segment = match ? getStartEndFromGasRow(match) : null
+    if (segment) {
+      console.log('Chainage segment set:', segment, 'for chainage:', filters.chainage)
+    } else {
+      console.log('No chainage segment found for chainage:', filters.chainage, 'match:', match, 'total rows:', gasPipelineRows.length)
+    }
     setChainageSegment(segment)
-  }, [filters?.chainage, filters?.floodProneZone, filteredGasPipelineRows])
+  }, [filters?.chainage, gasPipelineRows])
 
   // When floodProneZone is selected (and no chainage), show all matching segments
   useEffect(() => {
@@ -666,25 +995,42 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
     return treesToShow
   })()
 
-  // Load soil data points from Soil_Data_10km_1.json (Sheet3)
+  // Load soil data points from DATA_Soil.json (Sheet3) - updated CSV format
   useEffect(() => {
     const loadSoil = async () => {
       try {
-        const res = await fetch('/Soil_Data_10km_1.json')
-        if (!res.ok) return
+        // Try new format first (DATA_Soil.json)
+        let res = await fetch('/DATA_Soil.json')
+        let usingNewFormat = res.ok
+        if (!res.ok) {
+          // Fallback to old format
+          res = await fetch('/Soil_Data_10km_1.json')
+          if (!res.ok) return
+        }
         const ct = res.headers.get('content-type') || ''
         if (!ct.includes('application/json')) return
         const json = await res.json()
         const rows = json?.sheets?.Sheet3 || []
 
         // Updated Soil Data has no header row; legacy had header at index 0
-        const firstLoc = rows[0]?.locations
+        const firstLoc = rows[0]?.Locations || rows[0]?.locations
         const looksLikeHeader = firstLoc && typeof firstLoc === 'string' && !firstLoc.match(/\d+\.\d+°?[NS]/i)
         const dataRows = looksLikeHeader ? rows.slice(1) : rows
 
         const points = dataRows
           .map((row) => {
-            const loc = row.locations
+            // Try new format field name first (Locations), then fallback to old (locations)
+            let loc = row.Locations || row.locations
+
+            // Clean common encoding issues so coordinate parser works
+            if (typeof loc === 'string') {
+              loc = loc
+                // Replace replacement character with proper degree symbol
+                .replace(/\uFFFD/g, '°')
+                // Ensure degree symbol before N/S/C/E/W if it is missing
+                .replace(/(\d+(?:\.\d+)?)([NSCEW])/gi, '$1°$2')
+            }
+
             const coords = parseDMSLocation(loc)
             if (!coords) return null
             const [lat, lng] = coords
@@ -887,6 +1233,14 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
           </label>
         </div>
         
+        {/* Elevation graph toggle button - positioned under Upload KML */}
+        <button
+          onClick={() => setShowElevationGraph(true)}
+          className="px-3 py-2 bg-gray-900/90 text-xs text-white rounded-lg shadow-lg border border-green-400 hover:bg-gray-800 transition"
+        >
+          Elevation Graph
+        </button>
+        
         {kmlFileName && (
           <div className="flex items-center gap-2 px-3 py-2 bg-white bg-opacity-90 text-black rounded-lg shadow-lg text-xs">
             <span className="truncate max-w-[150px]">{kmlFileName}</span>
@@ -906,7 +1260,13 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
         <div className="absolute bottom-6 left-6 z-[1200] bg-white/95 rounded-xl shadow-2xl border border-gray-300 p-4 w-[450px] max-h-[90%] overflow-y-auto">
           <div className="flex items-center justify-between mb-2">
           <div className="text-[11px] text-gray-700 mb-2">
-            {selectedSoil.raw.locations}
+            {(() => {
+              const loc = selectedSoil.raw.Locations || selectedSoil.raw.locations || ''
+              // Clean encoding issues
+              return typeof loc === 'string' 
+                ? loc.replace(/\uFFFD/g, '°').replace(/(\d+(?:\.\d+)?)([NS]|C|[EW])/g, '$1°$2')
+                : loc
+            })()}
           </div>
             <button 
               className="w-6 h-6 rounded-full flex items-center justify-center bg-blue-500 text-white text-xs hover:bg-blue-600"
@@ -978,8 +1338,6 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
           // Determine if this selected chainage belongs to the selected flood prone zone
           let isChainageInSelectedFloodZone = false
           if (filters?.floodProneZone && filters.floodProneZone !== 'All' && gasPipelineRows.length > 0 && filters?.chainage && filters.chainage !== 'All') {
-            const filterFloodStr = String(filters.floodProneZone).trim()
-            const filterFloodNum = parseFloat(filterFloodStr)
             const chainageNum = parseFloat(filters.chainage)
 
             const matchingRow = gasPipelineRows.find((row) => {
@@ -993,16 +1351,23 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
             if (matchingRow) {
               const rowFloodRaw = getFloodProneZoneFromGasRow(matchingRow)
               if (rowFloodRaw != null) {
-                const rowFloodStr = String(rowFloodRaw).trim()
-                const rowFloodNum = parseFloat(rowFloodStr)
-
-                // Exact string match
-                if (rowFloodStr === filterFloodStr) {
+                // If "ALL_FLOOD_ZONES" is selected, any non-null flood value is considered inside
+                if (filters.floodProneZone === 'ALL_FLOOD_ZONES') {
                   isChainageInSelectedFloodZone = true
-                } else if (!Number.isNaN(rowFloodNum) && !Number.isNaN(filterFloodNum)) {
-                  // Numeric match with small tolerance
-                  if (Math.abs(rowFloodNum - filterFloodNum) < 1e-6) {
+                } else {
+                  const filterFloodStr = String(filters.floodProneZone).trim()
+                  const filterFloodNum = parseFloat(filterFloodStr)
+                  const rowFloodStr = String(rowFloodRaw).trim()
+                  const rowFloodNum = parseFloat(rowFloodStr)
+
+                  // Exact string match
+                  if (rowFloodStr === filterFloodStr) {
                     isChainageInSelectedFloodZone = true
+                  } else if (!Number.isNaN(rowFloodNum) && !Number.isNaN(filterFloodNum)) {
+                    // Numeric match with small tolerance
+                    if (Math.abs(rowFloodNum - filterFloodNum) < 1e-6) {
+                      isChainageInSelectedFloodZone = true
+                    }
                   }
                 }
               }
@@ -1021,6 +1386,29 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
                 pathOptions={{ color: lineColor, weight: 5, opacity: 0.95 }}
               />
               <Marker
+                position={chainageSegment.start}
+                icon={L.divIcon({
+                  className: 'chainage-segment-marker-start',
+                  html: `<div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:linear-gradient(145deg,#10b981,#059669);border:2px solid rgba(255,255,255,0.95);border-radius:50%;box-shadow:0 3px 8px rgba(0,0,0,0.35);font-weight:700;color:#fff;font-size:12px;">S</div>`,
+                  iconSize: [32, 32],
+                  iconAnchor: [16, 16]
+                })}
+              >
+                <Popup>
+                  <div className="p-2 min-w-[160px]">
+                    <h3 className="font-bold text-sm text-gray-800">Start</h3>
+                    <p className="text-xs text-gray-600">
+                      Lat, Lon: {chainageSegment.start[0].toFixed(6)}, {chainageSegment.start[1].toFixed(6)}
+                    </p>
+                    {filters?.chainage && (
+                      <p className="text-xs text-gray-600">
+                        Chainage: {filters.chainage}
+                      </p>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+              <Marker
                 position={chainageSegment.end}
                 icon={L.divIcon({
                   className: 'chainage-segment-marker',
@@ -1032,8 +1420,9 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
                 <Popup>
                   <div className="p-2 min-w-[160px]">
                     <h3 className="font-bold text-sm text-gray-800">End</h3>
-                    <p className="text-xs text-gray-600">Lat: {chainageSegment.end[0].toFixed(6)}</p>
-                    <p className="text-xs text-gray-600">Lon: {chainageSegment.end[1].toFixed(6)}</p>
+                    <p className="text-xs text-gray-600">
+                      Lat, Lon: {chainageSegment.end[0].toFixed(6)}, {chainageSegment.end[1].toFixed(6)}
+                    </p>
                     {isChainageInSelectedFloodZone && (
                       <p className="text-xs text-blue-600 font-semibold">
                         Flood Prone Zone: {filters.floodProneZone}
@@ -1048,13 +1437,32 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
         })()}
 
         {/* Flood Prone Zone segments: show all segments matching the flood prone zone filter */}
-        {floodProneZoneSegments.length > 0 && floodProneZoneSegments.map((segment, index) => (
-          <Polyline
-            key={`flood-zone-${index}`}
-            positions={[segment.start, segment.end]}
-            pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.8 }}
-          />
-        ))}
+        {floodProneZoneSegments.length > 0 &&
+          floodProneZoneSegments.map((segment, index) => {
+            const midLat = (segment.start[0] + segment.end[0]) / 2
+            const midLng = (segment.start[1] + segment.end[1]) / 2
+
+            return (
+              <Fragment key={`flood-zone-${index}`}>
+                {/* Main flood-prone line */}
+                <Polyline
+                  positions={[segment.start, segment.end]}
+                  pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.9 }}
+                />
+                {/* Highlighted flood area around the segment (few hundred meters) */}
+                <Circle
+                  center={[midLat, midLng]}
+                  radius={300} // metres; adjust if you want a bigger/smaller highlighted area
+                  pathOptions={{
+                    color: '#2563eb',
+                    weight: 1,
+                    fillColor: '#60a5fa',
+                    fillOpacity: 0.25,
+                  }}
+                />
+              </Fragment>
+            )
+          })}
 
         {/* Elevation path: polyline + point markers (from Elevation_data_100m_distance.json) */}
         {elevationPositions.length > 0 && (
@@ -1085,8 +1493,9 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
                     )}
                     <p className="text-xs text-gray-600">Distance: {(Number(point.distance) || 0).toFixed(2)} km</p>
                     <p className="text-xs text-gray-600">Elevation: {point.elevation} m</p>
-                    <p className="text-xs text-gray-600">Lat: {point.position[0].toFixed(6)}</p>
-                    <p className="text-xs text-gray-600">Lng: {point.position[1].toFixed(6)}</p>
+                    <p className="text-xs text-gray-600">
+                      Lat, Lng: {point.position[0].toFixed(6)}, {point.position[1].toFixed(6)}
+                    </p>
                   </div>
                 </Popup>
               </Marker>
@@ -1154,16 +1563,21 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
                         </p>
                       )}
                       <p className="text-xs text-gray-600">
-                        Lat: {tLat.toFixed(6)}
-                      </p>
-                      <p className="text-xs text-gray-600">
-                        Lng: {tLng.toFixed(6)}
+                        Lat, Lng: {tLat.toFixed(6)}, {tLng.toFixed(6)}
                       </p>
                     </div>
                   </Popup>
                 </Marker>
               )
             })}
+
+        {/* Elevation graph modal */}
+        {showElevationGraph && elevationPoints.length > 0 && (
+          <ElevationGraphModal
+            points={elevationPoints}
+            onClose={() => setShowElevationGraph(false)}
+          />
+        )}
 
         {/* Soil data points (from Soil_Data_10km_1.json using DMS Locations) */}
         {soilPoints.map((pt, index) => (
@@ -1180,10 +1594,17 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
             <Popup>
               <div className="p-1 min-w-[160px] text-xs text-gray-800">
                 <h3 className="font-bold text-sm mb-1">Soil data point</h3>
-                <p>Location: {pt.raw.locations}</p>
-                <p>Lat: {pt.position[0].toFixed(6)}</p>
-                <p>Lng: {pt.position[1].toFixed(6)}</p>
-                <p className="mt-1">
+                <p>Location: {(() => {
+                  const loc = pt.raw.Locations || pt.raw.locations || ''
+                  // Clean encoding issues
+                  return typeof loc === 'string' 
+                    ? loc.replace(/\uFFFD/g, '°').replace(/(\d+(?:\.\d+)?)([NS]|C|[EW])/g, '$1°$2')
+                    : loc
+                })()}</p>
+                <p>
+                  Lat, Lng: {pt.position[0].toFixed(6)}, {pt.position[1].toFixed(6)}
+                </p>
+                {/* <p className="mt-1">
                   <span className="font-semibold">Dry density @ 1 m:</span> {pt.raw.at_1_m_depth}
                 </p>
                 <p>
@@ -1194,7 +1615,7 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
                 </p>
                 <p>
                   <span className="font-semibold">Dry density @ 4 m:</span> {pt.raw.at_4_m_depth}
-                </p>
+                </p> */}
                 <button
                   className="mt-2 px-2 py-1 bg-blue-600 text-white rounded text-[10px]"
                   onClick={() => setSelectedSoil(pt)}
@@ -1309,10 +1730,7 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
                       </p>
                     )}
                     <p className="text-xs text-gray-600">
-                      Lat: {tLat.toFixed(6)}
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      Lng: {tLng.toFixed(6)}
+                      Lat, Lng: {tLat.toFixed(6)}, {tLng.toFixed(6)}
                     </p>
                   </div>
                 </Popup>
@@ -1356,8 +1774,9 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
               <Popup>
                 <div className="p-2">
                   <h3 className="font-bold text-sm mb-1">{tower.tower_name || `Tower ${actualIndex + 1}`}</h3>
-                  <p className="text-xs text-gray-600">Lat: {lat.toFixed(6)}</p>
-                  <p className="text-xs text-gray-600">Lng: {lng.toFixed(6)}</p>
+                  <p className="text-xs text-gray-600">
+                    Lat, Lng: {lat.toFixed(6)}, {lng.toFixed(6)}
+                  </p>
                   {tower.ground_elevation && (
                     <p className="text-xs text-gray-600">Elevation: {tower.ground_elevation} m</p>
                   )}
@@ -1395,8 +1814,9 @@ function MapView({ routeData, soilTypes, filters, selectedTowerIndices, selected
                 <div className="p-2">
                   <h3 className="font-bold text-sm mb-1">Tree</h3>
                   <p className="text-xs text-gray-600">Tower: {tree.towername}</p>
-                  <p className="text-xs text-gray-600">Lat: {treeLat.toFixed(6)}</p>
-                  <p className="text-xs text-gray-600">Lng: {treeLng.toFixed(6)}</p>
+                  <p className="text-xs text-gray-600">
+                    Lat, Lng: {treeLat.toFixed(6)}, {treeLng.toFixed(6)}
+                  </p>
                   {tree.height && (
                     <p className="text-xs text-gray-600">Height: {tree.height} m</p>
                   )}

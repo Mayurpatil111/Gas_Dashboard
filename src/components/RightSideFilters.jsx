@@ -65,12 +65,13 @@ function RightSideFilters({ filters, onFilterChange }) {
         
         // Get unique flood prone zone values
         const getFloodProneZoneValue = (row) => {
-          // Try different possible field names
-          const val = row.flood_prone_zone_area_acres_0 || 
+          // Try different possible field names (new CSV format first)
+          const val = row['Flood Prone Zone Area (Acres)'] ||
+                      row.flood_prone_zone_area_acres_0 || 
                       row.flood_prone_zone || 
                       row.flood_prone_zone_km ||
                       ''
-          if (val && val !== '' && val !== null && val !== undefined) {
+          if (val && val !== '' && val !== null && val !== undefined && val !== '0' && val !== 'NA') {
             return String(val)
           }
           return null
@@ -155,7 +156,13 @@ function RightSideFilters({ filters, onFilterChange }) {
               className="w-full px-4 py-2.5 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:bg-black appearance-none"
               style={{ backgroundColor: 'black', color: 'white', borderColor: 'white', borderRadius: '8px', fontSize: '14px', fontWeight: '700', fontFamily: 'inherit', cursor: 'pointer' }}
             >
-              <option value="All">All Flood Prone Zones</option>
+              {/* No flood filter – show everything */}
+              <option value="All">Flood Prone Zones</option>
+
+              {/* NEW: show ALL flood-prone segments (all values together) */}
+              <option value="ALL_FLOOD_ZONES">All Flood Prone Zones</option>
+
+              {/* Individual flood-prone values from data */}
               {floodProneZones.map((value, index) => (
                 <option key={index} value={value}>
                   {value}

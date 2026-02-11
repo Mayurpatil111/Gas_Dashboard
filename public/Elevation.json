@@ -1,0 +1,421 @@
+{
+  "fileName": "Ground Elevation.xlsx",
+  "convertedAt": "2026-02-11T10:52:01.434Z",
+  "structure": "parent_child",
+  "totalSheets": 1,
+  "sheetNames": [
+    "Sheet1"
+  ],
+  "sheets": {
+    "Sheet1": [
+      {
+        "chainage": "228.579",
+        "elevation": "254.2"
+      },
+      {
+        "chainage": "228.679",
+        "elevation": "247.9"
+      },
+      {
+        "chainage": "228.779",
+        "elevation": "241.8"
+      },
+      {
+        "chainage": "228.879",
+        "elevation": "241.1"
+      },
+      {
+        "chainage": "228.979",
+        "elevation": "239.9"
+      },
+      {
+        "chainage": "229.079",
+        "elevation": "234.2"
+      },
+      {
+        "chainage": "229.179",
+        "elevation": "231.7"
+      },
+      {
+        "chainage": "229.279",
+        "elevation": "230.3"
+      },
+      {
+        "chainage": "229.379",
+        "elevation": "225.4"
+      },
+      {
+        "chainage": "229.479",
+        "elevation": "225.3"
+      },
+      {
+        "chainage": "229.579",
+        "elevation": "225.9"
+      },
+      {
+        "chainage": "229.679",
+        "elevation": "224.5"
+      },
+      {
+        "chainage": "229.779",
+        "elevation": "220.7"
+      },
+      {
+        "chainage": "229.879",
+        "elevation": "221"
+      },
+      {
+        "chainage": "229.979",
+        "elevation": "221.1"
+      },
+      {
+        "chainage": "230.079",
+        "elevation": "223.1"
+      },
+      {
+        "chainage": "230.179",
+        "elevation": "224"
+      },
+      {
+        "chainage": "230.279",
+        "elevation": "223.2"
+      },
+      {
+        "chainage": "230.379",
+        "elevation": "225.3"
+      },
+      {
+        "chainage": "230.479",
+        "elevation": "226"
+      },
+      {
+        "chainage": "230.579",
+        "elevation": "230.3"
+      },
+      {
+        "chainage": "230.679",
+        "elevation": "230"
+      },
+      {
+        "chainage": "230.779",
+        "elevation": "229.3"
+      },
+      {
+        "chainage": "230.879",
+        "elevation": "230.3"
+      },
+      {
+        "chainage": "230.979",
+        "elevation": "232.4"
+      },
+      {
+        "chainage": "231.079",
+        "elevation": "231.9"
+      },
+      {
+        "chainage": "231.179",
+        "elevation": "235.8"
+      },
+      {
+        "chainage": "231.279",
+        "elevation": "235.4"
+      },
+      {
+        "chainage": "231.379",
+        "elevation": "235.3"
+      },
+      {
+        "chainage": "231.479",
+        "elevation": "237.6"
+      },
+      {
+        "chainage": "231.579",
+        "elevation": "236.6"
+      },
+      {
+        "chainage": "231.679",
+        "elevation": "239"
+      },
+      {
+        "chainage": "231.779",
+        "elevation": "239.3"
+      },
+      {
+        "chainage": "231.879",
+        "elevation": "241.6"
+      },
+      {
+        "chainage": "231.979",
+        "elevation": "247"
+      },
+      {
+        "chainage": "232.079",
+        "elevation": "245.6"
+      },
+      {
+        "chainage": "232.179",
+        "elevation": "249.9"
+      },
+      {
+        "chainage": "232.279",
+        "elevation": "250"
+      },
+      {
+        "chainage": "232.379",
+        "elevation": "258.3"
+      },
+      {
+        "chainage": "232.479",
+        "elevation": "264.3"
+      },
+      {
+        "chainage": "232.579",
+        "elevation": "265.5"
+      },
+      {
+        "chainage": "232.679",
+        "elevation": "268"
+      },
+      {
+        "chainage": "232.779",
+        "elevation": "268.4"
+      },
+      {
+        "chainage": "232.879",
+        "elevation": "270.1"
+      },
+      {
+        "chainage": "232.979",
+        "elevation": "272.2"
+      },
+      {
+        "chainage": "233.079",
+        "elevation": "276.9"
+      },
+      {
+        "chainage": "233.179",
+        "elevation": "276"
+      },
+      {
+        "chainage": "233.279",
+        "elevation": "276.3"
+      },
+      {
+        "chainage": "233.379",
+        "elevation": "274"
+      },
+      {
+        "chainage": "233.479",
+        "elevation": "277.3"
+      },
+      {
+        "chainage": "233.579",
+        "elevation": "275.6"
+      },
+      {
+        "chainage": "233.679",
+        "elevation": "274.4"
+      },
+      {
+        "chainage": "233.779",
+        "elevation": "273.7"
+      },
+      {
+        "chainage": "233.879",
+        "elevation": "268.6"
+      },
+      {
+        "chainage": "233.979",
+        "elevation": "263.2"
+      },
+      {
+        "chainage": "234.079",
+        "elevation": "259"
+      },
+      {
+        "chainage": "234.179",
+        "elevation": "259.3"
+      },
+      {
+        "chainage": "234.279",
+        "elevation": "257.4"
+      },
+      {
+        "chainage": "234.379",
+        "elevation": "257.9"
+      },
+      {
+        "chainage": "234.479",
+        "elevation": "253.9"
+      },
+      {
+        "chainage": "234.579",
+        "elevation": "254.1"
+      },
+      {
+        "chainage": "234.679",
+        "elevation": "251.1"
+      },
+      {
+        "chainage": "234.779",
+        "elevation": "253.2"
+      },
+      {
+        "chainage": "234.879",
+        "elevation": "258.9"
+      },
+      {
+        "chainage": "234.979",
+        "elevation": "251.9"
+      },
+      {
+        "chainage": "235.079",
+        "elevation": "243.4"
+      },
+      {
+        "chainage": "235.179",
+        "elevation": "245.7"
+      },
+      {
+        "chainage": "235.279",
+        "elevation": "247.7"
+      },
+      {
+        "chainage": "235.379",
+        "elevation": "249.9"
+      },
+      {
+        "chainage": "235.479",
+        "elevation": "247.2"
+      },
+      {
+        "chainage": "235.579",
+        "elevation": "241.5"
+      },
+      {
+        "chainage": "235.679",
+        "elevation": "242.7"
+      },
+      {
+        "chainage": "235.779",
+        "elevation": "241.1"
+      },
+      {
+        "chainage": "235.879",
+        "elevation": "240.1"
+      },
+      {
+        "chainage": "235.979",
+        "elevation": "236.6"
+      },
+      {
+        "chainage": "236.079",
+        "elevation": "224.9"
+      },
+      {
+        "chainage": "236.179",
+        "elevation": "221.9"
+      },
+      {
+        "chainage": "236.279",
+        "elevation": "218.7"
+      },
+      {
+        "chainage": "236.379",
+        "elevation": "224.3"
+      },
+      {
+        "chainage": "236.479",
+        "elevation": "215.1"
+      },
+      {
+        "chainage": "236.579",
+        "elevation": "212.9"
+      },
+      {
+        "chainage": "236.679",
+        "elevation": "214.8"
+      },
+      {
+        "chainage": "236.779",
+        "elevation": "215.8"
+      },
+      {
+        "chainage": "236.879",
+        "elevation": "214"
+      },
+      {
+        "chainage": "236.979",
+        "elevation": "208.5"
+      },
+      {
+        "chainage": "237.079",
+        "elevation": "208.2"
+      },
+      {
+        "chainage": "237.179",
+        "elevation": "205.3"
+      },
+      {
+        "chainage": "237.279",
+        "elevation": "205"
+      },
+      {
+        "chainage": "237.379",
+        "elevation": "202.1"
+      },
+      {
+        "chainage": "237.479",
+        "elevation": "199"
+      },
+      {
+        "chainage": "237.579",
+        "elevation": "196.6"
+      },
+      {
+        "chainage": "237.679",
+        "elevation": "191.4"
+      },
+      {
+        "chainage": "237.779",
+        "elevation": "192.5"
+      },
+      {
+        "chainage": "237.879",
+        "elevation": "186.3"
+      },
+      {
+        "chainage": "237.979",
+        "elevation": "192.7"
+      },
+      {
+        "chainage": "238.079",
+        "elevation": "193.1"
+      },
+      {
+        "chainage": "238.179",
+        "elevation": "188.8"
+      },
+      {
+        "chainage": "238.279",
+        "elevation": "194"
+      },
+      {
+        "chainage": "238.379",
+        "elevation": "193.5"
+      },
+      {
+        "chainage": "238.479",
+        "elevation": "193.5"
+      },
+      {
+        "chainage": "238.579",
+        "elevation": "187.1"
+      },
+      {
+        "chainage": "238.679",
+        "elevation": "188.4"
+      }
+    ]
+  }
+}
